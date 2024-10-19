@@ -13,9 +13,17 @@ namespace mqtt
     public class Mqtt : IMqtt
     {
         /// <summary>
+        /// Enum for the MQTT version
+        /// </summary>
+        public enum Version
+        {
+            MQTT_3_1_1 = 4,
+            MQTT_5 = 5 // Coming soon
+        }
+        /// <summary>
         /// Enum for the Packet Type
         /// </summary>
-        public enum PacketType
+        private enum PacketType
         {
             CONNECT = 0x10,
             CONNACK = 0x20,
@@ -30,8 +38,7 @@ namespace mqtt
             UNSUBACK = 0xB0,
             PINGREQ = 0xC0,
             PINGRESP = 0xD0,
-            DISCONNECT = 0xE0,
-            Reserved = 0xF0
+            DISCONNECT = 0xE0
         }
 
         /// <summary>
@@ -47,9 +54,10 @@ namespace mqtt
         /// <summary>
         /// Enum for the Connect Return Code
         /// </summary>
-        public enum ConnectReturnCode
+        private enum ConnectReturnCode
         {
             SUCCESS = 0x00,
+
             UNSPECIFIED_ERROR = 0x80,
             MALFORMED_PACKET = 0x81,
             PROTOCOL_ERROR = 0x82,
@@ -96,6 +104,7 @@ namespace mqtt
         /// <summary>
         /// Variables for the connection state
         /// </summary>
+        public Version MQTTVersion { get; set; } = Version.MQTT_3_1_1;
         public bool WillRetain { get; set; } = false;
         public QualityOfService QoS { get; set; } = QualityOfService.EXACTLY_ONCE;
         public bool CleanSession { get; set; } = true;
@@ -125,21 +134,27 @@ namespace mqtt
         /// <summary>
         /// Packet ID for the SUBSCRIBE message
         /// </summary>
-        int subscribePacketId = 1;
+        private int subscribePacketId = 1;
 
         /// <summary>
         /// Packet ID for the UNSUBSCRIBE message
         /// </summary>
-        int unsubscribePacketId = 1;
+        private int unsubscribePacketId = 1;
 
         /// <summary>
         /// Timer for the ping messages
         /// </summary>
-        Timer? pingTimer;
+        private Timer? pingTimer;
 
         private bool willFlag = false;
         private string willTopic = "";
         private string willMessage = "";
+
+        private string brokerAddress = "";
+        private int port = 0;
+        private string clientID = "";
+        private string username = "";
+        private string password = "";
 
         /// <summary>
         /// Set the will message, use SetWill(null, null) to disable the will message
@@ -168,7 +183,13 @@ namespace mqtt
         /// <returns> Task </returns>
         public async Task Connect(string brokerAddress, int port, string clientID, string username = "", string password = "")
         {
-            Console.WriteLine("Connect to " + brokerAddress + ":" + port + " with client ID " + clientID);
+            if (isConnected)
+            {
+                return;
+            }
+            isConnected = false;
+            connectionClosed = false;
+
             if (brokerAddress.Equals(""))
             {
                 throw new Exception("Broker address is empty!");
@@ -185,6 +206,12 @@ namespace mqtt
             {
                 throw new Exception("Client ID is too long!");
             }
+
+            this.brokerAddress = brokerAddress;
+            this.port = port;
+            this.clientID = clientID;
+            this.username = username;
+            this.password = password;
 
             // Create a new TCP client and connect to the broker
             client = new TcpClient(brokerAddress, port);

@@ -14,21 +14,26 @@ catch (Exception ex)
 async Task Start()
 {
     Console.WriteLine("MQTT");
+    // Create a new MQTT client instance
     Mqtt mqtt = new()
     {
+        MQTTVersion = Mqtt.Version.MQTT_3_1_1,
         WillRetain = true,
         QoS = Mqtt.QualityOfService.EXACTLY_ONCE,
         CleanSession = true,
         KeepAlive = 60,
     };
+
+    // Register event handlers
     mqtt.MessageReceived += HandleMessage;
     mqtt.ConnectionLost += () => Console.WriteLine("Connection lost!");
 
+    // Set the last will and testament
     mqtt.SetWill("uutestuu", "Goodbye World");
 
     // Connect to the broker
-    //await mqtt.Connect("test.mosquitto.org", 1883, "Client_0815");
-    await mqtt.Connect("broker-cn.emqx.io", 1883, "Client_0815");
+    await mqtt.Connect("test.mosquitto.org", 1883, "Client_0815");
+    //await mqtt.Connect("broker-cn.emqx.io", 1883, "Client_0815");
 
     // Publish a message
     mqtt.Publish("uutestuu", "Hello World 1");
