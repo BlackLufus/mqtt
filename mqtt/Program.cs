@@ -1,9 +1,10 @@
 ﻿// See https://aka.ms/new-console-template for more information
 using mqtt;
 
+await Start();
 try
 {
-    Start().Wait();
+    //await Start();
 }
 catch (Exception ex)
 {
@@ -13,13 +14,21 @@ catch (Exception ex)
 async Task Start()
 {
     Console.WriteLine("MQTT");
-    Mqtt mqtt = new Mqtt();
+    Mqtt mqtt = new()
+    {
+        WillRetain = true,
+        QoS = Mqtt.QualityOfService.EXACTLY_ONCE,
+        CleanSession = true,
+        KeepAlive = 60,
+    };
     mqtt.MessageReceived += HandleMessage;
     mqtt.ConnectionLost += () => Console.WriteLine("Connection lost!");
-    
+
+    mqtt.SetWill("uutestuu", "Goodbye World");
+
     // Connect to the broker
-    await mqtt.Connect("test.mosquitto.org", 1883, "Client_0815");
-    //mqtt.Connect("broker.hivemq.com", 1883, "Client_0815");
+    //await mqtt.Connect("test.mosquitto.org", 1883, "Client_0815");
+    await mqtt.Connect("broker-cn.emqx.io", 1883, "Client_0815");
 
     // Publish a message
     mqtt.Publish("uutestuu", "Hello World 1");

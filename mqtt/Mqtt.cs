@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.ComponentModel.Design;
 using System.Diagnostics;
 using System.Linq;
 using System.Net.Sockets;
@@ -36,7 +37,7 @@ namespace mqtt
         /// <summary>
         /// Enum for the Quality of Service (QoS)
         /// </summary>
-        public enum QoS
+        public enum QualityOfService
         {
             AT_MOST_ONCE = 0,
             AT_LEAST_ONCE = 1,
@@ -95,12 +96,9 @@ namespace mqtt
         /// <summary>
         /// Variables for the connection state
         /// </summary>
-        public bool UserNameFlag { get; set; } = false;
-        public bool PasswordFlag { get; set; } = false;
         public bool WillRetain { get; set; } = false;
-        public QoS WillQoS { get; set; } = QoS.EXACTLY_ONCE;
-        public bool WillFlag { get; set; } = false;
-        public bool CleanSession { get; set; } = false;
+        public QualityOfService QoS { get; set; } = QualityOfService.EXACTLY_ONCE;
+        public bool CleanSession { get; set; } = true;
         public int KeepAlive { get; set; } = 20;
 
         /// <summary>
@@ -139,6 +137,28 @@ namespace mqtt
         /// </summary>
         Timer? pingTimer;
 
+        private bool willFlag = false;
+        private string willTopic = "";
+        private string willMessage = "";
+
+        /// <summary>
+        /// Set the will message, use SetWill(null, null) to disable the will message
+        /// </summary>
+        /// <param name="topic"></param>
+        /// <param name="message"></param>
+        public void SetWill(string topic, string message)
+        {
+            if (!topic.Equals("") && !message.Equals("")) {
+                willTopic = topic;
+                willMessage = message;
+                willFlag = true;
+            }
+            else
+            {
+                willFlag = false;
+            }
+        }
+
         /// <summary>
         /// Connect to the MQTT broker
         /// </summary>
@@ -146,8 +166,26 @@ namespace mqtt
         /// <param name="port"> The port </param>
         /// <param name="clientID"> The client ID </param>
         /// <returns> Task </returns>
-        public async Task Connect(string brokerAddress, int port, string clientID)
+        public async Task Connect(string brokerAddress, int port, string clientID, string username = "", string password = "")
         {
+            Console.WriteLine("Connect to " + brokerAddress + ":" + port + " with client ID " + clientID);
+            if (brokerAddress.Equals(""))
+            {
+                throw new Exception("Broker address is empty!");
+            }
+            else if (port < 0 || port > 65535)
+            {
+                throw new Exception("Port is invalid!");
+            }
+            if (clientID.Equals(""))
+            {
+                throw new Exception("Client ID is empty!");
+            }
+            else if (clientID.Length > 23)
+            {
+                throw new Exception("Client ID is too long!");
+            }
+
             // Create a new TCP client and connect to the broker
             client = new TcpClient(brokerAddress, port);
 
@@ -157,8 +195,10 @@ namespace mqtt
             // Starte den Listener für eingehende Pakete
             Task.Run(() => IncomingPacketListener());
 
+            Task.Delay(100).Wait();
+
             // Erstelle eine MQTT CONNECT Nachricht (simplifizierte Version)
-            byte[] connectMessage = CreateConnectMessage(clientID);
+            byte[] connectMessage = CreateConnectMessage(clientID, username, password);
             stream.Write(connectMessage, 0, connectMessage.Length);
 
             // Start the ping timer
@@ -176,7 +216,7 @@ namespace mqtt
         /// </summary>
         /// <param name="clientId"> The client ID </param>
         /// <returns> The CONNECT message </returns>
-        private byte[] CreateConnectMessage(string clientId)
+        private byte[] CreateConnectMessage(string clientId, string username = "", string password = "")
         {
             byte protocolVersion = 4;
 
@@ -187,6 +227,48 @@ namespace mqtt
                 // Remaining Length
                 10
             };
+
+            // Connect Flags
+            byte connectFlags = 0b_0000_0000;
+            
+            Console.WriteLine("username: " + username);
+            // User Name Flag (Bit 7)
+            // This bit specifies if a user name is present in the payload.
+            if (username.Length > 0)
+            {
+                connectFlags |= 1 << 7;
+
+                // Password Flag (Bit 6)
+                // This bit specifies if a password is used.
+                if (password.Length > 0)
+                {
+                    connectFlags |= 1 << 6;
+                }
+            }
+
+            // Will Flag (Bit 2)
+            // This bit specifies if the Will Flag is set.
+            if (willFlag)
+            {
+                // Will Retain Flag (Bit 5) [Only if Will Flag is set]
+                // This bit specifies if the Will Message is to be Retained when it is published.
+                if (WillRetain)
+                {
+                    connectFlags |= 1 << 5;
+                }
+
+                // Will QoS (Bits 3 and 4) [Only if Will Flag is set]
+                connectFlags |= (byte)((int)QoS << 3);
+
+                connectFlags |= 1 << 2;
+            }
+
+            // Clean Session Flag (Bit 1)
+            //  This bit specifies the handling of the Session state.
+            if (CleanSession)
+            {
+                connectFlags |= 1 << 1;
+            }
 
             // Variable Header
             byte[] header =
@@ -200,7 +282,7 @@ namespace mqtt
                 // Version
                 protocolVersion,
                 // Connect Flags
-                GetConnectFlags(),
+                connectFlags,
                 // Keep Alive MSB
                 (byte)(KeepAlive >> 8),
                 // Keep Alive LSB
@@ -208,71 +290,71 @@ namespace mqtt
             ];
 
             // Payload
-            byte[] payload = new byte[2 + clientId.Length];
-            payload[0] = (byte)(clientId.Length >> 8);
-            payload[1] = (byte)(clientId.Length & 0xFF);
-            Array.Copy(Encoding.UTF8.GetBytes(clientId), 0, payload, 2, clientId.Length);
+            List<byte> payload = [
+                (byte)(clientId.Length >> 8),
+                (byte)(clientId.Length & 0xFF)
+            ];
+            //byte[] payload = new byte[2 + clientId.Length];
+            payload.AddRange(Encoding.UTF8.GetBytes(clientId));
+            //Array.Copy(Encoding.UTF8.GetBytes(clientId), 0, payload, 2, clientId.Length);
+
+            if (willFlag)
+            {
+                Console.WriteLine("Set Will Flag");
+                byte[] topicArray = new byte[2 + willTopic.Length];
+                topicArray[0] = (byte)(willTopic.Length >> 8);
+                topicArray[1] = (byte)(willTopic.Length & 0xFF);
+                Array.Copy(Encoding.UTF8.GetBytes(willTopic), 0, topicArray, 2, willTopic.Length);
+                payload.AddRange(topicArray);
+
+                byte[] messageArray = new byte[2 + willMessage.Length];
+                messageArray[0] = (byte)(willMessage.Length >> 8);
+                messageArray[1] = (byte)(willMessage.Length & 0xFF);
+                Array.Copy(Encoding.UTF8.GetBytes(willMessage), 0, messageArray, 2, willMessage.Length);
+                payload.AddRange(messageArray);
+            }
+
+            if (username.Length > 0)
+            {
+                Console.WriteLine("Set Username Flag");
+                byte[] usernameArray = new byte[2 + username!.Length];
+                usernameArray[0] = (byte)(username.Length >> 8);
+                usernameArray[1] = (byte)(username.Length & 0xFF);
+                Array.Copy(Encoding.UTF8.GetBytes(username), 0, usernameArray, 2, username.Length);
+                payload.AddRange(usernameArray);
+
+                if (password.Length > 0)
+                {
+                    byte[] passwordArray = new byte[2 + password!.Length];
+                    passwordArray[0] = (byte)(password.Length >> 8);
+                    passwordArray[1] = (byte)(password.Length & 0xFF);
+                    Array.Copy(Encoding.UTF8.GetBytes(password), 0, passwordArray, 2, password.Length);
+                    payload.AddRange(passwordArray);
+                }
+            }
+            for (int i = 0; i < payload.Count; i++)
+            {
+                Console.WriteLine(Convert.ToString(payload[i], 2).PadLeft(8, '0'));
+            }
+
+            Console.WriteLine(Convert.ToString(connectFlags, 2).PadLeft(8, '0'));
 
             // Set the remaining length and set it in the fixed header
-            int remainingLength = header.Length + payload.Length;
+            int remainingLength = header.Length + payload.Count;
             fixedHeader[1] = (byte)remainingLength;
 
             // Merge all arrays
-            byte[] result = new byte[fixedHeader.Length + header.Length + payload.Length];
+            byte[] result = new byte[fixedHeader.Length + header.Length + payload.Count];
             Array.Copy(fixedHeader, 0, result, 0, fixedHeader.Length);
             Array.Copy(header, 0, result, fixedHeader.Length, header.Length);
-            Array.Copy(payload, 0, result, fixedHeader.Length + header.Length, payload.Length);
+            Array.Copy(payload.ToArray(), 0, result, fixedHeader.Length + header.Length, payload.Count);
+
+            /*for (int i = 0; i < result.Length; i++)
+            {
+                Console.WriteLine(Convert.ToString(result[i], 2).PadLeft(8, '0'));
+            }*/
 
             return result;
-        }
-
-        /// <summary>
-        /// Get the Connect Flags
-        /// </summary>
-        /// <returns> The Connect Flags </returns>
-        private byte GetConnectFlags()
-        {
-            byte connectFlags = 0b_0000_0000;
-
-            // Setze das User Name Flag (Bit 7)
-            if (UserNameFlag)
-            {
-                // Need to implement!
-                connectFlags |= (1 << 7);
-            }
-
-            // Setze das Password Flag (Bit 6)
-            if (PasswordFlag)
-            {
-                // Need to implement!
-                connectFlags |= (1 << 6);
-            }
-
-            // Setze das Will Retain Flag (Bit 5)
-            if (WillRetain)
-            {
-                connectFlags |= (1 << 5);
-            }
-
-            // Setze das Will QoS (Bits 4 und 3)
-            if (WillFlag)
-            {
-                // WillQoS muss in den Bits 3 und 4 gesetzt werden
-                // Hier erfolgt das Setzen basierend auf dem Wert von WillQoS (0, 1 oder 2)
-                connectFlags |= (byte)((int)WillQoS << 3); // Maske mit 0x03 stellt sicher, dass nur die unteren 2 Bits genutzt werden
-
-                // Setze das Will Flag (Bit 2)
-                connectFlags |= (1 << 2);
-            }
-
-            // Setze das Clean Session Flag (Bit 1)
-            if (CleanSession)
-            {
-                connectFlags |= (1 << 1);
-            }
-
-            // Das LSB (Bit 0) ist immer 0 und muss nicht gesetzt werden.
-            return connectFlags;
         }
 
         /// <summary>
@@ -289,25 +371,25 @@ namespace mqtt
             // Fixed Header
             byte[] fixedHeader =
             {
-                (byte)((byte)(PacketType.PUBLISH) | (dupFlag ? (1 << 3) : 0) | ((int)WillQoS << 1) | (WillRetain ? 1 : 0)),
+                (byte)((byte)(PacketType.PUBLISH) | (dupFlag ? (1 << 3) : 0) | ((int)QoS << 1) | (WillRetain ? 1 : 0)),
                 0
             };
 
             // Payload
-            byte[] payload = new byte[2 + topic.Length + message.Length + (WillQoS != QoS.AT_MOST_ONCE ? 2 : 0)];
+            byte[] payload = new byte[2 + topic.Length + message.Length + (QoS != QualityOfService.AT_MOST_ONCE ? 2 : 0)];
             payload[0] = (byte)(topic.Length >> 8);
             payload[1] = (byte)(topic.Length & 0xFF);
             Array.Copy(Encoding.UTF8.GetBytes(topic), 0, payload, 2, topic.Length);
 
             // Set the message ID if QoS > 0
-            if (WillQoS != QoS.AT_MOST_ONCE)
+            if (QoS != QualityOfService.AT_MOST_ONCE)
             {
                 payload[2 + topic.Length] = (byte)(messagePacketId >> 8);
                 payload[3 + topic.Length] = (byte)(messagePacketId++ & 0xFF);
             }
 
             // Copy the message to the payload
-            Array.Copy(Encoding.UTF8.GetBytes(message), 0, payload, 2 + topic.Length + (WillQoS != QoS.AT_MOST_ONCE ? 2 : 0), message.Length);
+            Array.Copy(Encoding.UTF8.GetBytes(message), 0, payload, 2 + topic.Length + (QoS != QualityOfService.AT_MOST_ONCE ? 2 : 0), message.Length);
 
             // Set the remaining length
             int remainingLength = payload.Length;
@@ -341,7 +423,7 @@ namespace mqtt
             payload[0] = (byte)(topic.Length >> 8);
             payload[1] = (byte)(topic.Length & 0xFF);
             Array.Copy(Encoding.UTF8.GetBytes(topic), 0, payload, 2, topic.Length);
-            payload[2 + topic.Length] = (byte)(0b_0000_0011 & (int)WillQoS);
+            payload[2 + topic.Length] = (byte)(0b_0000_0011 & (int)QoS);
 
             // Merge all arrays
             byte[] subscribe = new byte[fixedHeader.Length + payload.Length];
@@ -405,6 +487,10 @@ namespace mqtt
         /// </summary>
         private void CloseConnection()
         {
+            if (connectionClosed)
+            {
+                return;
+            }
             connectionClosed = true;
 
             pingTimer?.Dispose();
@@ -412,8 +498,8 @@ namespace mqtt
             // Close the stream
             if (stream != null)
             {
-                stream.Close();
                 SendDisconnect();
+                stream.Close();
             }
 
             // Disconnect the client
@@ -461,9 +547,6 @@ namespace mqtt
 
                     // Handle the incoming packet
                     HandleIncomingPacket(buffer);
-
-                    // Flush the stream
-                    stream.Flush();
                 } while (bytesRead > 0);
             }
             catch (Exception e)
@@ -721,6 +804,7 @@ namespace mqtt
         private void HandleUnsubAck(byte[] packet)
         {
             // ToDo: Implement
+            // No Implementation needed [Server specific]
         }
 
         /// <summary>
@@ -730,7 +814,7 @@ namespace mqtt
         private void HandlePingReq(byte[] packet)
         {
             // ToDo: Implement
-            // No Implementation needed
+            // No Implementation needed [Server specific]
         }
 
         /// <summary>
@@ -748,7 +832,7 @@ namespace mqtt
         /// <param name="packet"> The received packet </param>
         private void HandleDisconnect(byte[] packet)
         {
-            // ToDo: Implement
+            Disconnect();
         }
 
         /// <summary>
@@ -777,8 +861,8 @@ namespace mqtt
             Array.Copy(payload, 0, pubAck, fixedHeader.Length, payload.Length);
 
             // Send the message and flush the stream
-            stream!.Write(pubAck, 0, pubAck.Length);
-            stream!.Flush();
+            stream?.Write(pubAck, 0, pubAck.Length);
+            stream?.Flush();
         }
 
         /// <summary>
@@ -807,8 +891,8 @@ namespace mqtt
             Array.Copy(payload, 0, pubRec, fixedHeader.Length, payload.Length);
 
             // Send the message and flush the stream
-            stream!.Write(pubRec, 0, pubRec.Length);
-            stream!.Flush();
+            stream?.Write(pubRec, 0, pubRec.Length);
+            stream?.Flush();
         }
 
         /// <summary>
@@ -837,8 +921,8 @@ namespace mqtt
             Array.Copy(payload, 0, pubRel, fixedHeader.Length, payload.Length);
 
             // Send the message and flush the stream
-            stream!.Write(pubRel, 0, pubRel.Length);
-            stream!.Flush();
+            stream?.Write(pubRel, 0, pubRel.Length);
+            stream?.Flush();
         }
 
         /// <summary>
@@ -867,8 +951,8 @@ namespace mqtt
             Array.Copy(payload, 0, pubComp, fixedHeader.Length, payload.Length);
 
             // Send the message and flush the stream
-            stream!.Write(pubComp, 0, pubComp.Length);
-            stream!.Flush();
+            stream?.Write(pubComp, 0, pubComp.Length);
+            stream?.Flush();
         }
 
         /// <summary>
@@ -886,8 +970,8 @@ namespace mqtt
             };
 
             // Send the message and flush the stream
-            stream!.Write(fixedHeader, 0, fixedHeader.Length);
-            stream!.Flush();
+            stream?.Write(fixedHeader, 0, fixedHeader.Length);
+            stream?.Flush();
         }
 
         /// <summary>
@@ -903,8 +987,8 @@ namespace mqtt
             };
 
             // Send the message and flush the stream
-            stream!.Write(fixedHeader, 0, fixedHeader.Length);
-            stream!.Flush();
+            stream?.Write(fixedHeader, 0, fixedHeader.Length);
+            stream?.Flush();
         }
     }
 }

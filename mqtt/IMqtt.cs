@@ -8,7 +8,7 @@ namespace mqtt
 {
     public interface IMqtt
     {
-        public Task Connect(string brokerAddress, int port, string clientID);
+        public Task Connect(string brokerAddress, int port, string clientID, string username = "", string password = "");
         public void Publish(string topic, string message);
         public void Subscribe(string topic);
         public void Unsubscribe(string topic);
