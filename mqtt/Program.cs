@@ -36,27 +36,27 @@ async Task Start()
     //await mqtt.Connect("broker-cn.emqx.io", 1883, "Client_0815");
 
     // Publish a message
-    mqtt.Publish("uutestuu", "Hello World 1");
+    await mqtt.Publish("uutestuu", "Hello World 1");
 
     Task.Delay(500).Wait();
 
     // Subscribe to a topic
-    mqtt.Subscribe("uutestuu");
+    await mqtt.Subscribe("uutestuu");
 
     Task.Delay(500).Wait();
 
     // Publish a message
-    mqtt.Publish("uutestuu", "Hello World 2");
+    await mqtt.Publish("uutestuu", "Hello World 2");
 
     Task.Delay(5000).Wait();
 
     // Unsubscribe from a topic
-    mqtt.Unsubscribe("uutestuu");
+    await mqtt.Unsubscribe("uutestuu");
 
     Task.Delay(5000).Wait();
 
     // Subscribe to a topic
-    mqtt.Subscribe("uutestuu");
+    await mqtt.Subscribe("uutestuu");
 
     Task.Delay(2000).Wait();
 

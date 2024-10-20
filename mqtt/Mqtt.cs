@@ -220,7 +220,7 @@ namespace mqtt
             stream = client.GetStream();
 
             // Starte den Listener für eingehende Pakete
-            Task.Run(() => IncomingPacketListener());
+            IncomingPacketListener();
 
             Task.Delay(100).Wait();
 
@@ -248,12 +248,12 @@ namespace mqtt
             byte protocolVersion = 4;
 
             // Fixed Header: 1 Byte
-            byte[] fixedHeader = {
+            byte[] fixedHeader = [
                 // Packet Type
                 (byte)PacketType.CONNECT,
                 // Remaining Length
                 10
-            };
+            ];
 
             // Connect Flags
             byte connectFlags = 0b_0000_0000;
@@ -389,7 +389,7 @@ namespace mqtt
         /// </summary>
         /// <param name="topic"> The topic to publish to </param>
         /// <param name="message"> The message to publish </param>
-        public void Publish(string topic, string message)
+        public async Task Publish(string topic, string message)
         {
             // Need to implement!
             // It indicates that the message is a duplicate of a previously sent message
@@ -397,10 +397,10 @@ namespace mqtt
 
             // Fixed Header
             byte[] fixedHeader =
-            {
+            [
                 (byte)((byte)(PacketType.PUBLISH) | (dupFlag ? (1 << 3) : 0) | ((int)QoS << 1) | (WillRetain ? 1 : 0)),
-                0
-            };
+            0
+            ];
 
             // Payload
             byte[] payload = new byte[2 + topic.Length + message.Length + (QoS != QualityOfService.AT_MOST_ONCE ? 2 : 0)];
@@ -428,22 +428,23 @@ namespace mqtt
             Array.Copy(payload, 0, result, fixedHeader.Length, payload.Length);
 
             // Send the message and flush the stream
-            stream!.Write(result, 0, result.Length);
+            await stream!.WriteAsync(result, 0, result.Length);
+            stream!.Flush();
         }
 
         /// <summary>
         /// Subscribe to a topic
         /// </summary>
         /// <param name="topic"> The topic to subscribe to </param>
-        public void Subscribe(string topic)
+        public async Task Subscribe(string topic)
         {
             // Fixed Header
-            byte[] fixedHeader = {
+            byte[] fixedHeader = [
                 (byte)PacketType.SUBSCRIBE | 0b_0010,
-                (byte)(2 + 2 + topic.Length + 1),
-                (byte)(subscribePacketId >> 8),
-                (byte)(subscribePacketId++ & 0b_1111_1111)
-            };
+            (byte)(2 + 2 + topic.Length + 1),
+            (byte)(subscribePacketId >> 8),
+            (byte)(subscribePacketId++ & 0b_1111_1111)
+            ];
 
             // Payload
             byte[] payload = new byte[2 + topic.Length + 1];
@@ -458,27 +459,28 @@ namespace mqtt
             Array.Copy(payload, 0, subscribe, fixedHeader.Length, payload.Length);
 
             // Send the message and flush the stream
-            stream!.Write(subscribe, 0, subscribe.Length);
+            await stream!.WriteAsync(subscribe, 0, subscribe.Length);
+            stream!.Flush();
         }
 
         /// <summary>
         /// Unsubscribe from a topic
         /// </summary>
         /// <param name="topic"> The topic to unsubscribe from </param>
-        public void Unsubscribe(string topic)
+        public async Task Unsubscribe(string topic)
         {
             // Fixed Header
-            byte[] bytes = {
+            byte[] bytes = [
                 (byte)PacketType.UNSUBSCRIBE | 0b_0010,
-                0
-            };
+            0
+            ];
 
             // Variable Header
             byte[] variableHeader =
-            {
+            [
                 (byte)(unsubscribePacketId >> 8),
-                (byte)(unsubscribePacketId++ & 0xFF)
-            };
+            (byte)(unsubscribePacketId++ & 0xFF)
+            ];
 
             // Payload
             byte[] payload = new byte[2 + topic.Length];
@@ -497,7 +499,7 @@ namespace mqtt
             Array.Copy(payload, 0, unsubscribe, bytes.Length + variableHeader.Length, payload.Length);
 
             // Send the message and flush the stream
-            stream!.Write(unsubscribe, 0, unsubscribe.Length);
+            await stream!.WriteAsync(unsubscribe, 0, unsubscribe.Length);
             stream!.Flush();
         }
 
@@ -552,42 +554,45 @@ namespace mqtt
         /// Incoming Packet Listener
         /// </summary>
         /// <returns> Task </returns>
-        private async Task IncomingPacketListener()
+        private void IncomingPacketListener()
         {
-            // Check if the stream is null
-            if (stream == null)
+            Task.Run(async () =>
             {
-                return;
-            }
-
-            // Buffer for incoming data (1 KB) and number of bytes read
-            byte[] buffer = new byte[1024];
-            int bytesRead;
-
-            try
-            {
-                // Read incoming data from the stream and handle the packet accordingly until the connection is closed or an exception occurs
-                do
+                // Check if the stream is null
+                if (stream == null)
                 {
-                    // Read the incoming data
-                    bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length);
-
-                    // Handle the incoming packet
-                    HandleIncomingPacket(buffer);
-                } while (bytesRead > 0);
-            }
-            catch (Exception e)
-            {
-                if (!connectionClosed)
-                {
-                    // Handle the exception
-                    Console.WriteLine("Exception: " + e.Message);
+                    return;
                 }
-            }
-            finally
-            {
-                CloseConnection();
-            }
+
+                // Buffer for incoming data (1 KB) and number of bytes read
+                byte[] buffer = new byte[1024];
+                int bytesRead;
+
+                try
+                {
+                    // Read incoming data from the stream and handle the packet accordingly until the connection is closed or an exception occurs
+                    do
+                    {
+                        // Read the incoming data
+                        bytesRead = await stream.ReadAsync(buffer);
+
+                        // Handle the incoming packet
+                        HandleIncomingPacket(buffer);
+                    } while (bytesRead > 0);
+                }
+                catch (Exception e)
+                {
+                    if (!connectionClosed)
+                    {
+                        // Handle the exception
+                        Console.WriteLine("Exception: " + e.Message);
+                    }
+                }
+                finally
+                {
+                    CloseConnection();
+                }
+            });
         }
 
         /// <summary>
@@ -815,7 +820,7 @@ namespace mqtt
             Console.WriteLine("SUBACK: " + packetId);
 
             // Was the subscription successful?
-            bool Failure = ((0b_1000_000 & packet[4]) >> 7) == 1 ? true : false;
+            bool Failure = ((0b_1000_000 & packet[4]) >> 7) == 1;
 
             // QoS Level
             int QoSLevel = (0b_0000_0011 & packet[4]);
@@ -871,16 +876,16 @@ namespace mqtt
         {
             // Fixed Header
             byte[] fixedHeader =
-            {
+            [
                 (byte)PacketType.PUBACK | 0b_0000,
                 2
-            };
+            ];
 
             // Payload
-            byte[] payload = {
+            byte[] payload = [
                 MSB,
                 LSB
-            };
+            ];
 
             // Merge all arrays
             byte[] pubAck = new byte[fixedHeader.Length + payload.Length];
@@ -901,16 +906,16 @@ namespace mqtt
         {
             // Fixed Header
             byte[] fixedHeader =
-            {
+            [
                 (byte)PacketType.PUBREC | 0b_0000,
                 2
-            };
+            ];
 
             // Payload
-            byte[] payload = {
+            byte[] payload = [
                 MSB,
                 LSB
-            };
+            ];
 
             // Merge all arrays
             byte[] pubRec = new byte[fixedHeader.Length + payload.Length];
@@ -931,16 +936,16 @@ namespace mqtt
         {
             // Fixed Header
             byte[] fixedHeader =
-            {
+            [
                 (byte)PacketType.PUBREL | 0b_0010,
                 2
-            };
+            ];
 
             // Payload
-            byte[] payload = {
+            byte[] payload = [
                 MSB,
                 LSB
-            };
+            ];
 
             // Merge all arrays
             byte[] pubRel = new byte[fixedHeader.Length + payload.Length];
@@ -961,16 +966,16 @@ namespace mqtt
         {
             // Fixed Header
             byte[] fixedHeader =
-            {
+            [
                 (byte)PacketType.PUBCOMP | 0b_0000,
                 2
-            };
+            ];
 
             // Payload
-            byte[] payload = {
+            byte[] payload = [
                 MSB,
                 LSB
-            };
+            ];
 
             // Merge all arrays
             byte[] pubComp = new byte[fixedHeader.Length + payload.Length];
@@ -991,10 +996,10 @@ namespace mqtt
 
             // Fixed Header
             byte[] fixedHeader =
-            {
+            [
                 (byte)PacketType.PINGREQ | 0b_0000,
                 0
-            };
+            ];
 
             // Send the message and flush the stream
             stream?.Write(fixedHeader, 0, fixedHeader.Length);
@@ -1008,10 +1013,10 @@ namespace mqtt
         {
             // Fixed Header
             byte[] fixedHeader =
-            {
+            [
                 (byte)PacketType.DISCONNECT | 0b_0000,
                 0
-            };
+            ];
 
             // Send the message and flush the stream
             stream?.Write(fixedHeader, 0, fixedHeader.Length);
