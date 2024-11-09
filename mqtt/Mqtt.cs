@@ -81,6 +81,40 @@ namespace mqtt
             CONNECTION_RATE_EXCEEDED = 0x9F
         }
 
+        private enum DisconnectReasionCode
+        {
+            NORMAL_DISCONNECTION = 0,
+            DISCONNECT_WITH_WILL_MESSAGE = 4,
+            UNSPECIFIED_ERROR = 128,
+            MALFORMED_PACKET = 129,
+            PROTOCOL_ERROR = 130,
+            IMPLEMENTATION_SPECIFIC_ERROR = 131,
+            NOT_AUTHORIZED = 135,
+            SERVER_BUSY = 137,
+            SERVER_SHUTTING_DOWN = 139,
+            BAD_AUTHENTICATION_METHOD = 140,
+            KEEP_ALIVE_TIMEOUT = 141,
+            SESSION_TAKEN_OVER = 142,
+            TOPIC_FILTER_INVALID = 143,
+            TOPIC_NAME_INVALID = 144,
+            RECEIVE_MAXIMUM_EXCEEDED = 147,
+            TOPIC_ALIAS_INVALID = 148,
+            PACKET_TOO_LARGE = 149,
+            MESSAGE_RATE_TOO_HIGH = 150,
+            QUOTA_EXCEEDED = 151,
+            ADMINISTRATIVE_ACTION = 153,
+            PAYLOAD_FORMAT_INVALID = 154,
+            RETAIN_NOT_SUPPORTED = 155,
+            QoS_NOT_SUPPORTED = 156,
+            USE_ANOTHER_SERVER = 157,
+            SERVER_MOVED = 158,
+            SHARED_SUBSCRIPTIONS_NOT_SUPPORTED = 159,
+            CONNECTION_RATE_EXCEEDED = 160,
+            MAXIMUM_CONNECT_TIME = 161,
+            SUBSCRIPTION_IDENTIFIERS_NOT_SUPPORTED = 162,
+            WILDCARD_SUBSCRIPTIONS_NOT_SUPPORTED = 163
+        }
+
         /// <summary>
         /// Message received event
         /// </summary>
@@ -109,6 +143,7 @@ namespace mqtt
         public QualityOfService QoS { get; set; } = QualityOfService.EXACTLY_ONCE;
         public bool CleanSession { get; set; } = true;
         public int KeepAlive { get; set; } = 20;
+        public int SessionExpiryInterval { get; set; } = 10;
 
         /// <summary>
         /// TcpClient for the connection and NetworkStream for the data transfer
@@ -245,8 +280,6 @@ namespace mqtt
         /// <returns> The CONNECT message </returns>
         private byte[] CreateConnectMessage(string clientId, string username = "", string password = "")
         {
-            byte protocolVersion = 4;
-
             // Fixed Header: 1 Byte
             byte[] fixedHeader = [
                 // Packet Type
@@ -298,8 +331,7 @@ namespace mqtt
             }
 
             // Variable Header
-            byte[] header =
-            [
+            List<byte> header = [
                 // Length MSB (0)
                 0x00,
                 // Length LSB (4)
@@ -307,7 +339,7 @@ namespace mqtt
                 // 'MQTT'
                 (byte)'M', (byte)'Q', (byte)'T', (byte)'T',
                 // Version
-                protocolVersion,
+                (byte)MQTTVersion,
                 // Connect Flags
                 connectFlags,
                 // Keep Alive MSB
@@ -315,6 +347,21 @@ namespace mqtt
                 // Keep Alive LSB
                 (byte)(KeepAlive & 0xFF),
             ];
+            
+            if (MQTTVersion == Version.MQTT_5)
+            {
+                header.AddRange([
+                    // Properties Length
+                    5,
+                    // Property Identifier: Session Expiry Interval
+                    0b_0001_0001,
+                    // Property Length
+                    (byte)(SessionExpiryInterval >> 24),
+                    (byte)(SessionExpiryInterval >> 16),
+                    (byte)(SessionExpiryInterval >> 8),
+                    (byte)(SessionExpiryInterval & 0xFF),
+                ]);
+            }
 
             // Payload
             List<byte> payload = [
@@ -359,27 +406,29 @@ namespace mqtt
                     payload.AddRange(passwordArray);
                 }
             }
-            for (int i = 0; i < payload.Count; i++)
+            /*for (int i = 0; i < payload.Count; i++)
             {
                 Console.WriteLine(Convert.ToString(payload[i], 2).PadLeft(8, '0'));
-            }
+            }*/
 
-            Console.WriteLine(Convert.ToString(connectFlags, 2).PadLeft(8, '0'));
+            //Console.WriteLine(Convert.ToString(connectFlags, 2).PadLeft(8, '0'));
 
             // Set the remaining length and set it in the fixed header
-            int remainingLength = header.Length + payload.Count;
+            int remainingLength = header.Count + payload.Count;
             fixedHeader[1] = (byte)remainingLength;
 
             // Merge all arrays
-            byte[] result = new byte[fixedHeader.Length + header.Length + payload.Count];
+            byte[] result = new byte[fixedHeader.Length + header.Count + payload.Count];
             Array.Copy(fixedHeader, 0, result, 0, fixedHeader.Length);
-            Array.Copy(header, 0, result, fixedHeader.Length, header.Length);
-            Array.Copy(payload.ToArray(), 0, result, fixedHeader.Length + header.Length, payload.Count);
+            Array.Copy(header.ToArray(), 0, result, fixedHeader.Length, header.Count);
+            Array.Copy(payload.ToArray(), 0, result, fixedHeader.Length + header.Count, payload.Count);
 
-            /*for (int i = 0; i < result.Length; i++)
+            Console.WriteLine("Connect Packet: " + header.Count);
+            for (int i = 0; i < header.Count; i++)
             {
-                Console.WriteLine(Convert.ToString(result[i], 2).PadLeft(8, '0'));
-            }*/
+                Console.WriteLine(Convert.ToString(header[i], 2).PadLeft(8, '0'));
+            }
+            Console.WriteLine("=====================================");
 
             return result;
         }
@@ -428,8 +477,8 @@ namespace mqtt
             Array.Copy(payload, 0, result, fixedHeader.Length, payload.Length);
 
             // Send the message and flush the stream
-            await stream!.WriteAsync(result, 0, result.Length);
-            stream!.Flush();
+            await stream?.WriteAsync(result, 0, result.Length);
+            stream?.Flush();
         }
 
         /// <summary>
@@ -864,6 +913,10 @@ namespace mqtt
         /// <param name="packet"> The received packet </param>
         private void HandleDisconnect(byte[] packet)
         {
+            if (MQTTVersion == Version.MQTT_5)
+            {
+                Console.WriteLine("Disconnect Reason Code: " + (DisconnectReasionCode)packet[2]);
+            }
             Disconnect();
         }
 
