@@ -18,14 +18,14 @@ async Task Start()
     Mqtt mqtt = new()
     {
         MQTTVersion = Mqtt.Version.MQTT_3_1_1,
-        WillRetain = true,
+        WillRetain = false,
         QoS = Mqtt.QualityOfService.EXACTLY_ONCE,
-        CleanSession = false,
+        CleanSession = true,
         KeepAlive = 60,
     };
 
     // Register event handlers
-    mqtt.MessageReceived += HandleMessage;
+    mqtt.OnMessageReceived += HandleMessage;
     mqtt.OnConnectionFailed += () => Console.WriteLine("Connection Failed");
     mqtt.OnConnectionLost += () => Console.WriteLine("Connection lost!");
 

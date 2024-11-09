@@ -133,7 +133,7 @@ namespace mqtt
         public event DisconnectedDelegate? OnDisconnected;
 
         public delegate void MessageReceivedDelegate(string topic, string message);
-        public event MessageReceivedDelegate? MessageReceived;
+        public event MessageReceivedDelegate? OnMessageReceived;
 
         public delegate void SubscribedDelegate(string topic);
         public event SubscribedDelegate? OnSubscribed;
@@ -332,7 +332,7 @@ namespace mqtt
 
         private void ConnectionLost()
         {
-            Disconnect();
+            Disconnect(false);
             OnConnectionLost?.Invoke();
             Reconnect();
         }
@@ -349,7 +349,7 @@ namespace mqtt
         /// <summary>
         /// Close the stream and the connection to the broker
         /// </summary>
-        public void Disconnect()
+        public void Disconnect(bool triggerEvent = true)
         {
             if (!isConnected && connectionClosed)
             {
@@ -359,7 +359,10 @@ namespace mqtt
             connectionClosed = true;
             isConnected = false;
 
-            OnDisconnected?.Invoke();
+            if (triggerEvent)
+            {
+                OnDisconnected?.Invoke();
+            }
 
             cts?.Cancel();
             cts?.Dispose();
@@ -651,11 +654,11 @@ namespace mqtt
             switch (qoSLevel)
             {
                 case 0: // QoS 0 - "At most once"
-                    MessageReceived?.Invoke(topic, message);
+                    OnMessageReceived?.Invoke(topic, message);
                     break;
                 case 1: // QoS 1 - "At least once"
                     SendPubAck((byte)(packetId >> 8), (byte)(packetId & 0xFF));
-                    MessageReceived?.Invoke(topic, message);
+                    OnMessageReceived?.Invoke(topic, message);
                     break;
                 case 2: // QoS 2 - "Exactly once"
                     packetMap.Add(packetId, (topic, message));
@@ -754,7 +757,7 @@ namespace mqtt
             SendPubComp(packet[2], packet[3]);
 
             // Invoke the MessageReceived event
-            MessageReceived?.Invoke(packetMap[packetId].Item1, packetMap[packetId].Item2);
+            OnMessageReceived?.Invoke(packetMap[packetId].Item1, packetMap[packetId].Item2);
 
             // Remove the message from the packetMap
             packetMap.Remove(packetId);

@@ -13,6 +13,6 @@ namespace mqtt
         public void Publish(string topic, string message);
         public void Subscribe(string topic);
         public void Unsubscribe(string topic);
-        public void Disconnect();
+        public void Disconnect(bool triggerEvent = true);
     }
 }
