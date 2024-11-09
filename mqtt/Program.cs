@@ -20,13 +20,14 @@ async Task Start()
         MQTTVersion = Mqtt.Version.MQTT_3_1_1,
         WillRetain = true,
         QoS = Mqtt.QualityOfService.EXACTLY_ONCE,
-        CleanSession = true,
+        CleanSession = false,
         KeepAlive = 60,
     };
 
     // Register event handlers
     mqtt.MessageReceived += HandleMessage;
-    mqtt.ConnectionLost += () => Console.WriteLine("Connection lost!");
+    mqtt.OnConnectionFailed += () => Console.WriteLine("Connection Failed");
+    mqtt.OnConnectionLost += () => Console.WriteLine("Connection lost!");
 
     // Set the last will and testament
     mqtt.SetWill("uutestuu", "Goodbye World");
@@ -36,32 +37,32 @@ async Task Start()
     //await mqtt.Connect("broker-cn.emqx.io", 1883, "Client_0815");
 
     // Publish a message
-    await mqtt.Publish("uutestuu", "Hello World 1");
+    mqtt.Publish("uutestuu", "Hello World 1");
 
     Task.Delay(500).Wait();
 
     // Subscribe to a topic
-    await mqtt.Subscribe("uutestuu");
+    mqtt.Subscribe("uutestuu");
 
     Task.Delay(500).Wait();
 
     // Publish a message
-    await mqtt.Publish("uutestuu", "Hello World 2");
+    mqtt.Publish("uutestuu", "Hello World 2");
 
     Task.Delay(5000).Wait();
 
     // Unsubscribe from a topic
-    await mqtt.Unsubscribe("uutestuu");
+    mqtt.Unsubscribe("uutestuu");
 
     Task.Delay(5000).Wait();
 
     // Subscribe to a topic
-    await mqtt.Subscribe("uutestuu");
+    mqtt.Subscribe("uutestuu");
 
     Task.Delay(2000).Wait();
 
     // Disconnect from the broker
-    mqtt.Disconnect();
+    //mqtt.Disconnect();
 
     while (true)
     {

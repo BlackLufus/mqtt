@@ -10,9 +10,9 @@ namespace mqtt
     {
         public void SetWill(string topic, string message);
         public Task Connect(string brokerAddress, int port, string clientID, string username = "", string password = "");
-        public Task Publish(string topic, string message);
-        public Task Subscribe(string topic);
-        public Task Unsubscribe(string topic);
+        public void Publish(string topic, string message);
+        public void Subscribe(string topic);
+        public void Unsubscribe(string topic);
         public void Disconnect();
     }
 }
