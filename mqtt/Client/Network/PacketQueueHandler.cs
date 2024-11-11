@@ -1,6 +1,5 @@
-﻿using mqtt.Client;
-using mqtt.Network;
-using mqtt.Packets;
+﻿using Mqtt.Client;
+using Mqtt.Client.Packets;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -8,7 +7,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace mqtt.Network
+namespace Mqtt.Client.Network
 {
     public class PacketQueueHandler
     {

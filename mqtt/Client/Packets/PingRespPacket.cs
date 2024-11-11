@@ -4,7 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace mqtt.Packets
+namespace Mqtt.Client.Packets
 {
     public class PingRespPacket
     {

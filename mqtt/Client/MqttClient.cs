@@ -1,7 +1,8 @@
-﻿using mqtt.Client;
-using mqtt.Network;
-using mqtt.Packets;
-using mqtt.ReasonCode;
+﻿using Mqtt.Client;
+using Mqtt.Client.Network;
+using Mqtt.Client.Packets;
+using Mqtt.Client.ReasonCode;
+using Mqtt.Packets;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -11,7 +12,7 @@ using System.Net.Sockets;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace mqtt.Client
+namespace Mqtt.Client
 {
     public class MqttClient : IMqttClient
     {

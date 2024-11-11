@@ -1,11 +1,11 @@
-﻿using mqtt.ReasonCode;
+﻿using Mqtt.Client.ReasonCode;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace mqtt.Packets
+namespace Mqtt.Client.Packets
 {
     public class SubAckPacket(int packetID, SubAckReasonCode[] returnCodes)
     {
@@ -44,7 +44,7 @@ namespace mqtt.Packets
             int remainingLength = data[1];
 
             // Variable Header (Packet ID)
-            int packetID = (data[2] << 8) | data[3];
+            int packetID = data[2] << 8 | data[3];
 
             // Payload
             SubAckReasonCode[] returnCodes = new SubAckReasonCode[remainingLength - 2];

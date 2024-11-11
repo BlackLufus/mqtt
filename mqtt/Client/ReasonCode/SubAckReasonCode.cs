@@ -4,7 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace mqtt.ReasonCode
+namespace Mqtt.Client.ReasonCode
 {
     public enum SubAckReasonCode
     {

@@ -1,11 +1,11 @@
-﻿using mqtt.Packets;
+﻿using Mqtt.Client.Packets;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace mqtt.Network
+namespace Mqtt.Client.Network
 {
     public class PacketQueue(int id, PacketType packetType, DateTime? timestamp, string topic, string? message, string? state)
     {

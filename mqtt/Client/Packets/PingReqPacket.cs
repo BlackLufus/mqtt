@@ -1,19 +1,17 @@
-﻿using mqtt.ReasonCode;
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace mqtt.Packets
+namespace Mqtt.Client.Packets
 {
-    public class DisconnectPacket(DisconnectReasionCode? reasonCode = null)
+    public class PingReqPacket
     {
-        public DisconnectReasionCode? ReasonCode { get; } = reasonCode;
         public byte[] Encode()
         {
             // Fixed Header
-            byte fixedHeader = (byte)PacketType.DISCONNECT;
+            byte fixedHeader = (byte)PacketType.PINGREQ;
 
             // Remaining Length
             int remainingLength = 0;
@@ -24,7 +22,7 @@ namespace mqtt.Packets
             return data;
         }
 
-        public static DisconnectPacket Decode(byte[] data)
+        public static PingReqPacket Decode(byte[] data)
         {
             // Fixed Header
             byte fixedHeader = data[0];
@@ -32,7 +30,7 @@ namespace mqtt.Packets
             // Remaining Length
             int remainingLength = data[1];
 
-            return new DisconnectPacket();
+            return new PingReqPacket();
         }
     }
 }

@@ -1,11 +1,11 @@
-﻿using mqtt.Client;
+﻿using Mqtt.Client;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace mqtt.Packets
+namespace Mqtt.Client.Packets
 {
     public class ConnectPacket(string clientID, string username = "", string password = "", LastWill? lastWill = null, bool willRetain = false, QualityOfService qos = QualityOfService.AT_MOST_ONCE, bool cleanSession = true, MqttVersion version = MqttVersion.MQTT_3_1_1, ushort keepAlive = 60, uint sessionExpiryInterval = 0)
     {

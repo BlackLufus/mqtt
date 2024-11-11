@@ -1,5 +1,6 @@
-﻿using mqtt.Client;
-using mqtt.Packets;
+﻿using Mqtt.Client;
+using Mqtt.Client.Packets;
+using Mqtt.Packets;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -8,7 +9,7 @@ using System.Net.Sockets;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace mqtt.Network
+namespace Mqtt.Client.Network
 {
     public class OutgoingHandler(MqttOption option, NetworkStream stream) : IDisposable
     {

@@ -4,9 +4,9 @@ using System.Diagnostics;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using mqtt.Client;
+using Mqtt.Client;
 
-namespace mqtt.Packets
+namespace Mqtt.Client.Packets
 {
     public class PublishPacket(string topic, string message, QualityOfService qos = 0, bool retain = false, bool dup = false, int packetID = -1)
     {
@@ -38,7 +38,7 @@ namespace mqtt.Packets
         public byte[] Encode()
         {
             // Fixed Header
-            byte fixedHeader = (byte)((byte)(PacketType.PUBLISH) | ((DUP ? 1 : 0) << 3) | ((int)QoS << 1) | (Retain ? 1 : 0));
+            byte fixedHeader = (byte)((byte)PacketType.PUBLISH | (DUP ? 1 : 0) << 3 | (int)QoS << 1 | (Retain ? 1 : 0));
 
             // Variable Header
             byte[] topicBytes = Encoding.UTF8.GetBytes(Topic);
@@ -86,7 +86,7 @@ namespace mqtt.Packets
             }
             Array.Copy(messageBytes, 0, data, offset, messageBytes.Length);
             offset += messageBytes.Length;
-                
+
             return data;
 
         }

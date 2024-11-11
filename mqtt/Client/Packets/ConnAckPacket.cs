@@ -1,11 +1,11 @@
-﻿using mqtt.ReasonCode;
+﻿using Mqtt.Client.ReasonCode;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace mqtt.Packets
+namespace Mqtt.Client.Packets
 {
     public class ConnAckPacket(bool sessionPresent, ConnectReturnCode returnCode)
     {

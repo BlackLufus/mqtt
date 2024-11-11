@@ -4,7 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace mqtt.Client
+namespace Mqtt.Client
 {
     public interface IMqttClient
     {

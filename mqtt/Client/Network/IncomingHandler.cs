@@ -1,6 +1,6 @@
-﻿using mqtt.Network;
-using mqtt.Packets;
-using mqtt.ReasonCode;
+﻿using Mqtt.Client.Packets;
+using Mqtt.Client.ReasonCode;
+using Mqtt.Packets;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -10,7 +10,7 @@ using System.Net.Sockets;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace mqtt.Network
+namespace Mqtt.Client.Network
 {
     public class IncomingHandler : IDisposable
     {

@@ -4,16 +4,16 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace mqtt.Packets
+namespace Mqtt.Client.Packets
 {
-    public class PubRelPacket(int packetID)
+    public class PubCompPacket(int packetID)
     {
         public int PacketID { get; } = packetID;
 
         public byte[] Encode()
         {
             // Fixed Header
-            byte fixedHeader = (byte)PacketType.PUBREL | 0b_0010;
+            byte fixedHeader = (byte)PacketType.PUBCOMP;
 
             // Remaining Length
             int remainingLength = 2;
@@ -32,7 +32,7 @@ namespace mqtt.Packets
             return data;
         }
 
-        public static PubRelPacket Decode(byte[] data)
+        public static PubCompPacket Decode(byte[] data)
         {
             // Fixed Header
             byte fixedHeader = data[0];
@@ -41,9 +41,9 @@ namespace mqtt.Packets
             int remainingLength = data[1];
 
             // Variable Header
-            int packetID = (data[2] << 8) | data[3];
+            int packetID = data[2] << 8 | data[3];
 
-            return new PubRelPacket(packetID);
+            return new PubCompPacket(packetID);
         }
     }
 }

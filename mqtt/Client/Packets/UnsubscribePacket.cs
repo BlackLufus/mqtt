@@ -4,7 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace mqtt.Packets
+namespace Mqtt.Client.Packets
 {
     public class UnsubscribePacket(int packetID, string[] topics)
     {
@@ -61,14 +61,14 @@ namespace mqtt.Packets
             int remainingLength = data[1];
 
             // Variable Header
-            int packetID = (data[2] << 8) | data[3];
+            int packetID = data[2] << 8 | data[3];
 
             // Payload
             List<string> topics = new List<string>();
             int index = 4;
             while (index < remainingLength + 4)
             {
-                int topicLength = (data[index] << 8) | data[index + 1];
+                int topicLength = data[index] << 8 | data[index + 1];
                 string topic = Encoding.UTF8.GetString(data, index + 2, topicLength);
                 topics.Add(topic);
                 index += 2 + topicLength;
