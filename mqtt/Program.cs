@@ -1,5 +1,6 @@
 ﻿// See https://aka.ms/new-console-template for more information
-using mqtt;
+using mqtt.Client;
+using mqtt.Options;
 
 await Start();
 try
@@ -17,9 +18,10 @@ async Task Start()
     // Create a new MQTT client instance
     Mqtt mqtt = new()
     {
-        MQTTVersion = Mqtt.Version.MQTT_3_1_1,
+        Version = MqttVersion.MQTT_3_1_1,
         WillRetain = false,
-        QoS = Mqtt.QualityOfService.EXACTLY_ONCE,
+        LastWill = new("uutestuu", "Goodbye World"),
+        QoS = QualityOfService.EXACTLY_ONCE,
         CleanSession = true,
         KeepAlive = 60,
     };
@@ -29,13 +31,11 @@ async Task Start()
     mqtt.OnConnectionFailed += () => Console.WriteLine("Connection Failed");
     mqtt.OnConnectionLost += () => Console.WriteLine("Connection lost!");
 
-    // Set the last will and testament
-    mqtt.SetWill("uutestuu", "Goodbye World");
-
     // Connect to the broker
     await mqtt.Connect("test.mosquitto.org", 1883, "Client_0815");
     //await mqtt.Connect("broker-cn.emqx.io", 1883, "Client_0815");
 
+    //mqtt.Subscribe("test/#");
     // Publish a message
     mqtt.Publish("uutestuu", "Hello World 1");
 
