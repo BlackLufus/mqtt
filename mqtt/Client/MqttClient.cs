@@ -47,7 +47,7 @@ namespace Mqtt.Client
         private readonly MqttOption mqttOption;
 
         private readonly MqttMonitor mqttMonitor;
-        private PacketQueueHandler packetQueueHandler;
+        private readonly PacketQueueHandler packetQueueHandler;
         private OutgoingHandler? outgoingHandler;
         private IncomingHandler? incomingHandler;
 
@@ -81,28 +81,26 @@ namespace Mqtt.Client
             }
             else
             {
+                mqttMonitor.ResetVariables();
+
+                if (clientID.Equals(""))
+                {
+                    throw new Exception("Client ID is empty!");
+                }
+                else if (clientID.Length > 23)
+                {
+                    throw new Exception("Client ID is too long!");
+                }
+
+                this.clientID = clientID;
+                this.username = username;
+                this.password = password;
+
                 try
                 {
-                    mqttMonitor.ResetVariables();
-
-                    if (clientID.Equals(""))
-                    {
-                        throw new Exception("Client ID is empty!");
-                    }
-                    else if (clientID.Length > 23)
-                    {
-                        throw new Exception("Client ID is too long!");
-                    }
-
-                    this.clientID = clientID;
-                    this.username = username;
-                    this.password = password;
-
                     Init();
 
                     StartListeners();
-
-                    //Task.Delay(100).Wait();
 
                     await HandleConnect();
                 }
@@ -116,17 +114,17 @@ namespace Mqtt.Client
 
         public void Publish(string topic, string message, bool isDup = false)
         {
-            packetQueueHandler!.Add(new PacketQueue(PublishPacket.NextPacketID, PacketType.PUBLISH, null, topic, message, "PUBLISH"));
+            packetQueueHandler.Add(new PacketQueue(PublishPacket.NextPacketID, PacketType.PUBLISH, null, topic, message, "PUBLISH"));
         }
 
         public void Subscribe(string topic)
         {
-            packetQueueHandler!.Add(new PacketQueue(SubscribePacket.NextPacketID, PacketType.SUBSCRIBE, null, topic, null, null));
+            packetQueueHandler.Add(new PacketQueue(SubscribePacket.NextPacketID, PacketType.SUBSCRIBE, null, topic, null, null));
         }
 
         public void Unsubscribe(string topic)
         {
-            packetQueueHandler!.Add(new PacketQueue(UnsubscribePacket.NextPacketID, PacketType.UNSUBSCRIBE, null, topic, null, null));
+            packetQueueHandler.Add(new PacketQueue(UnsubscribePacket.NextPacketID, PacketType.UNSUBSCRIBE, null, topic, null, null));
         }
 
         public void Disconnect(bool triggerEvent = true)
@@ -141,6 +139,7 @@ namespace Mqtt.Client
 
             if (triggerEvent)
             {
+                packetQueueHandler.Clear();
                 OnDisconnected?.Invoke();
             }
 
@@ -176,6 +175,7 @@ namespace Mqtt.Client
             {
                 Console.WriteLine("Reconnecting...");
                 await Connect(clientID, username, password);
+                await Task.Delay(5000);
             }
         }
 

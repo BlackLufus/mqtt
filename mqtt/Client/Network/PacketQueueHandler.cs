@@ -27,6 +27,10 @@ namespace Mqtt.Client.Network
             }
         }
 
+        public void Clear() {
+            packetQueueList.Clear();
+        }
+
         public void Start(CancellationTokenSource cts, MqttMonitor mqttMonitor, MqttOption mqttOption, OutgoingHandler outgoingHandler)
         {
             Debug.WriteLine("Mqtt Queue Listener started");
