@@ -6,9 +6,9 @@ using System.Net.Sockets;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace mqtt.Connection
+namespace mqtt.Network
 {
-    public class MqttMonitor
+    public class MqttMonitor : IDisposable
     {
         public bool IsConnectionClosed = false;
         public bool IsConnected = false;
@@ -29,41 +29,51 @@ namespace mqtt.Connection
 
         public void Start(TcpClient tcpClient, CancellationTokenSource cts, int keepAlive, Action SendPingReq)
         {
-            CancellationToken token = cts!.Token;
+            Debug.WriteLine("MqttMonitor started");
+
+            CancellationToken token = cts.Token;
             Task.Run(async () =>
             {
                 while (!IsConnectionClosed)
                 {
+                    token.ThrowIfCancellationRequested();
+
                     ConnectionStatus status = CheckConnectionStatus(tcpClient);
 
                     switch (status)
                     {
                         case ConnectionStatus.DisconnectedByHost:
-                            Console.WriteLine("Die Verbindung wurde vom Host getrennt.");
+                            //Console.WriteLine("Die Verbindung wurde vom Host getrennt.");
                             OnDisconnect?.Invoke(); // Spezifischer Handler für Host-getrennte Verbindungen
-                            break;
+                            return;
 
                         case ConnectionStatus.ConnectionError:
-                            Console.WriteLine("Es gab einen Verbindungsfehler.");
+                            //Console.WriteLine("Es gab einen Verbindungsfehler.");
                             OnConnectionLost?.Invoke(); // Allgemeiner Verbindungsverlust, keine spezifische Host-Trennung
-                            break;
+                            return;
 
                         case ConnectionStatus.Connected:
-                            Console.WriteLine("Die Verbindung ist weiterhin aktiv.");
+                            //Console.WriteLine("Die Verbindung ist weiterhin aktiv.");
                             break;
                     }
-                    await Task.Delay(1000, token);
+                    await Task.Delay(10, token);
                 }
+
+                Debug.WriteLine("MqttMonitor stopped");
             }, token);
 
             Task.Run(async () =>
             {
                 while (!IsConnectionClosed)
                 {
+                    token.ThrowIfCancellationRequested();
+
                     Debug.WriteLine("Send Ping Request");
                     SendPingReq();
                     await Task.Delay(keepAlive * 1000 / 2);
                 }
+
+                Debug.WriteLine("Ping Request stopped");
             }, token);
         }
 
@@ -116,6 +126,14 @@ namespace mqtt.Connection
         {
             IsConnectionClosed = false;
             IsConnected = false;
+
+            OnConnectionLost = null;
+            OnDisconnect = null;
+        }
+
+        public void Dispose()
+        {
+            GC.SuppressFinalize(this);
         }
     }
 }

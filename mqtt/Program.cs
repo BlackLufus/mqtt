@@ -1,6 +1,5 @@
 ﻿// See https://aka.ms/new-console-template for more information
 using mqtt.Client;
-using mqtt.Options;
 
 await Start();
 try
@@ -16,15 +15,19 @@ async Task Start()
 {
     Console.WriteLine("MQTT");
     // Create a new MQTT client instance
-    Mqtt mqtt = new()
-    {
-        Version = MqttVersion.MQTT_3_1_1,
-        WillRetain = false,
-        LastWill = new("uutestuu", "Goodbye World"),
-        QoS = QualityOfService.EXACTLY_ONCE,
-        CleanSession = true,
-        KeepAlive = 60,
-    };
+    MqttClient mqtt = new(
+        "broker-cn.emqx.io",
+        1883,
+        new MqttOption
+        {
+            Version = MqttVersion.MQTT_3_1_1,
+            WillRetain = false,
+            LastWill = new("uutestuu", "Goodbye World"),
+            QoS = QualityOfService.EXACTLY_ONCE,
+            CleanSession = true,
+            KeepAlive = 60,
+        }
+    );
 
     // Register event handlers
     mqtt.OnMessageReceived += HandleMessage;
@@ -32,8 +35,9 @@ async Task Start()
     mqtt.OnConnectionLost += () => Console.WriteLine("Connection lost!");
 
     // Connect to the broker
-    await mqtt.Connect("test.mosquitto.org", 1883, "Client_0815");
+    //await mqtt.Connect("test.mosquitto.org", 1883, "Client_0815");
     //await mqtt.Connect("broker-cn.emqx.io", 1883, "Client_0815");
+    await mqtt.Connect("Client_0815");
 
     //mqtt.Subscribe("test/#");
     // Publish a message
@@ -42,7 +46,7 @@ async Task Start()
     Task.Delay(500).Wait();
 
     // Subscribe to a topic
-    mqtt.Subscribe("uutestuu");
+    mqtt.Subscribe("test/#");
 
     Task.Delay(500).Wait();
 
@@ -70,10 +74,11 @@ async Task Start()
     }
 }
 
-void HandleMessage(string topic, string message)
+void HandleMessage(string topic, string message, bool retain)
 {
+    Console.WriteLine("Is Retained: " + retain);
     Console.WriteLine("=====================================");
-    Console.WriteLine("Topic: " + topic);
+    Console.WriteLine("Topic: " + topic + (retain ? " (Retained)" : ""));
     Console.WriteLine("Message: " + message);
     Console.WriteLine("=====================================");
 }

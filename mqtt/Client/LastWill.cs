@@ -4,7 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace mqtt.Options
+namespace mqtt.Client
 {
     public class LastWill(string topic, string message)
     {

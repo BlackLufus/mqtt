@@ -4,7 +4,7 @@ using System.Diagnostics;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using mqtt.Options;
+using mqtt.Client;
 
 namespace mqtt.Packets
 {
@@ -93,6 +93,7 @@ namespace mqtt.Packets
 
         public static PublishPacket Decode(byte[] data)
         {
+            Console.WriteLine(data[0] & 0x01);
             // Fixed Header
             byte fixedHeader = data[0];
             bool dup = (fixedHeader & 0x08) >> 3 == 1;

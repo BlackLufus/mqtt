@@ -6,12 +6,13 @@ using System.Threading.Tasks;
 
 namespace mqtt.Client
 {
-    public interface IMqtt
+    public interface IMqttClient
     {
-        public Task Connect(string brokerAddress, int port, string clientID, string username = "", string password = "");
-        public void Publish(string topic, string message);
+        public Task Connect(string clientID, string username = "", string password = "");
+        public void Publish(string topic, string message, bool isDup = false);
         public void Subscribe(string topic);
         public void Unsubscribe(string topic);
+
         public void Disconnect(bool triggerEvent = true);
     }
 }
