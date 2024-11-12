@@ -22,7 +22,7 @@ namespace Mqtt.Client
         public delegate void ConnectionLostDelegate();
         public event ConnectionLostDelegate? OnConnectionLost;
 
-        public delegate void ConnectionFailedDelegate();
+        public delegate void ConnectionFailedDelegate(string reason);
         public event ConnectionFailedDelegate? OnConnectionFailed;
 
         public delegate void DisconnectedDelegate();
@@ -106,8 +106,7 @@ namespace Mqtt.Client
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine("Connection failed: " + ex.Message);
-                    OnConnectionFailed?.Invoke();
+                    OnConnectionFailed?.Invoke(ex.Message);
                 }
             }
         }
@@ -164,6 +163,7 @@ namespace Mqtt.Client
 
         private void ConnectionLost()
         {
+            Debug.WriteLine("Connection lost!");
             Disconnect(false);
             OnConnectionLost?.Invoke();
             Reconnect();
@@ -188,6 +188,13 @@ namespace Mqtt.Client
             incomingHandler = new IncomingHandler();
             incomingHandler.OnConnAck += (connAckPacket) =>
             {
+                if (mqttMonitor.IsConnected)
+                {
+                    OnConnectionLost?.Invoke();
+                    OnConnectionSuccess?.Invoke(connAckPacket.SessionPresent, connAckPacket.ReturnCode);
+                    return;
+                }
+
                 // Invoke the ConnectionSuccess event
                 OnConnectionSuccess?.Invoke(connAckPacket.SessionPresent, connAckPacket.ReturnCode);
 
@@ -252,7 +259,7 @@ namespace Mqtt.Client
                 // Remove the message from the packetMap
                 if (pubCompPacket.PacketID == packetQueueHandler.Get.Id)
                 {
-                    Console.WriteLine("Remove from queue: (publish)" + pubCompPacket.PacketID);
+                    //Console.WriteLine("Remove from queue: (publish)" + pubCompPacket.PacketID);
                     packetQueueHandler.Remove();
                 }
             };
@@ -262,7 +269,7 @@ namespace Mqtt.Client
                 if (subAckPacket.PacketID == packetQueueHandler.Get.Id)
                 {
                     OnSubscribed?.Invoke(packetQueueHandler.Get.Topic);
-                    Debug.WriteLine("Remove from queue: (subscribe)" + subAckPacket.PacketID);
+                    //Debug.WriteLine("Remove from queue: (subscribe)" + subAckPacket.PacketID);
                     packetQueueHandler.Remove();
                 }
             };
@@ -272,7 +279,7 @@ namespace Mqtt.Client
                 if (unsubscribePacket.PacketID == packetQueueHandler.Get.Id)
                 {
                     OnUnsubscribed?.Invoke(packetQueueHandler.Get.Topic);
-                    Debug.WriteLine("Remove from queue: (unsubscribe)" + unsubscribePacket.PacketID);
+                    //Debug.WriteLine("Remove from queue: (unsubscribe)" + unsubscribePacket.PacketID);
                     packetQueueHandler.Remove();
                 }
             };
@@ -297,6 +304,7 @@ namespace Mqtt.Client
 
         private async Task HandleConnect()
         {
+            Console.WriteLine("Connecting to " + host + ":" + port);
             outgoingHandler!.SendConnect(clientID, username, password);
 
             int elapsed = 0;

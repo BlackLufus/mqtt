@@ -93,7 +93,6 @@ namespace Mqtt.Client.Packets
 
         public static PublishPacket Decode(byte[] data)
         {
-            Console.WriteLine(data[0] & 0x01);
             // Fixed Header
             byte fixedHeader = data[0];
             bool dup = (fixedHeader & 0x08) >> 3 == 1;
