@@ -15,9 +15,10 @@ namespace Mqtt.Client
         public MqttVersion Version { get; set; } = MqttVersion.MQTT_3_1_1;
         public bool WillRetain { get; set; } = false;
         public LastWill? LastWill { get; set; }
-        public QualityOfService QoS { get; set; } = QualityOfService.EXACTLY_ONCE;
+        public QualityOfService QoS { get; set; } = QualityOfService.AT_LEAST_ONCE;
         public bool CleanSession { get; set; } = true;
         public int KeepAlive { get; set; } = 20;
         public int SessionExpiryInterval { get; set; } = 10;
+        public bool Debug { get; set; } = false;
     }
 }

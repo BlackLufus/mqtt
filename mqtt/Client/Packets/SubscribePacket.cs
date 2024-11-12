@@ -7,23 +7,21 @@ using Mqtt.Client;
 
 namespace Mqtt.Client.Packets
 {
-    public class SubscribePacket(int packetID, List<string> topics, QualityOfService qos)
+    public class SubscribePacket(int packetId, Topic[] topics)
     {
-        private static int packetID = 0;
-        public static int NextPacketID
+        private static int packetId = 0;
+        public static int NextPacketId
         {
             get
             {
-                packetID++;
-                return packetID;
+                packetId++;
+                return packetId;
             }
         }
 
-        public int PacketId { get; } = packetID;
+        public int PacketId { get; } = packetId;
 
-        public List<string> Topics { get; } = topics;
-
-        public QualityOfService Qos { get; } = qos;
+        public Topic[] Topics { get; } = topics;
 
         public byte[] Encode()
         {
@@ -35,19 +33,23 @@ namespace Mqtt.Client.Packets
 
             // Payload
             List<byte> payload = new List<byte>();
-            foreach (string topic in Topics)
+            foreach (Topic topic in Topics)
             {
-                byte[] topicBytes = Encoding.UTF8.GetBytes(topic);
+                byte[] topicBytes = Encoding.UTF8.GetBytes(topic.Name);
                 byte[] topicLengthBytes = new byte[] { (byte)(topicBytes.Length >> 8), (byte)(topicBytes.Length & 0xFF) };
+                // Topic Length
                 payload.AddRange(topicLengthBytes);
+                // Topic
                 payload.AddRange(topicBytes);
+                // QoS
+                payload.AddRange(new byte[] { (byte)topic.QoS });
             }
 
             // QoS
-            byte[] qosArray = new byte[] { (byte)Qos };
+            //byte[] qosArray = new byte[] { (byte)Qos };
 
             // Remaining Length
-            int remainingLength = variableHeader.Length + payload.Count + qosArray.Length;
+            int remainingLength = variableHeader.Length + payload.Count;// + qosArray.Length;
 
             // Encode
             byte[] data = new byte[2 + remainingLength];
@@ -55,7 +57,7 @@ namespace Mqtt.Client.Packets
             data[1] = (byte)remainingLength;
             Array.Copy(variableHeader, 0, data, 2, variableHeader.Length);
             Array.Copy(payload.ToArray(), 0, data, 4, payload.Count);
-            Array.Copy(qosArray, 0, data, 4 + payload.Count, qosArray.Length);
+            //Array.Copy(qosArray, 0, data, 4 + payload.Count, qosArray.Length);
 
             return data;
         }
@@ -72,20 +74,22 @@ namespace Mqtt.Client.Packets
             int packetID = data[2] << 8 | data[3];
 
             // Payload
-            List<string> topics = new List<string>();
+            List<Topic> topics = new List<Topic>();
             int index = 4;
             while (index < data.Length)
             {
                 int topicLength = data[index] << 8 | data[index + 1];
-                string topic = Encoding.UTF8.GetString(data, index + 2, topicLength);
-                topics.Add(topic);
-                index += 2 + topicLength;
+                index += 2;
+                string topicName = Encoding.UTF8.GetString(data, index, topicLength);
+                index += topicLength;
+                QualityOfService qos =  (QualityOfService)(data[index] & 0b_0000_0011);
+                topics.Add(new Topic(topicName, qos));
             }
 
             // QoS
-            QualityOfService qos = (QualityOfService)data[data.Length - 1];
+            //QualityOfService qos = (QualityOfService)data[data.Length - 1];
 
-            return new SubscribePacket(packetID, topics, qos);
+            return new SubscribePacket(packetID, topics.ToArray());
         }
     }
 }

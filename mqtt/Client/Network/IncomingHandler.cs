@@ -21,12 +21,12 @@ namespace Mqtt.Client.Network
         public event Action<PubRelPacket>? OnPubRel;
         public event Action<PubCompPacket>? OnPubComp;
         public event Action<SubAckPacket>? OnSubAck;
-        public event Action<UnsubscribePacket>? OnUnsubAck;
+        public event Action<UnSubAckPacket>? OnUnSubAck;
         public event Action<PingReqPacket>? OnPingReq;
         public event Action<PingRespPacket>? OnPingResp;
         public event Action<DisconnectPacket>? OnDisconnect;
 
-        public void IncomingPacketListener(CancellationTokenSource cts, NetworkStream stream, MqttMonitor mqttMonitor)
+        public void IncomingPacketListener(CancellationTokenSource cts, NetworkStream stream, MqttMonitor mqttMonitorm, MqttOption mqttOption)
         {
             Debug.WriteLine("Incoming Packet Listener started");
 
@@ -50,11 +50,11 @@ namespace Mqtt.Client.Network
                     bytesRead = await stream.ReadAsync(buffer);
 
                     // Handle the incoming packet
-                    Debug.WriteLine("Bytes read: " + bytesRead);
+                    //Debug.WriteLine("Bytes read: " + bytesRead);
 
                     token.ThrowIfCancellationRequested();
 
-                    HandleIncomingPacket(bytesRead, buffer);
+                    HandleIncomingPacket(bytesRead, buffer, mqttOption.Debug);
                 } while (bytesRead > 0);
 
                 Debug.WriteLine("Incoming Packet Listener stopped");
@@ -65,14 +65,17 @@ namespace Mqtt.Client.Network
         /// Handle incoming packet
         /// </summary>
         /// <param name="packet"></param>
-        public void HandleIncomingPacket(int bytesRead, byte[] packet)
+        public void HandleIncomingPacket(int bytesRead, byte[] packet, bool debug)
         {
             try
             {
                 // 1. Byte: Packet Type
                 PacketType packetType = (PacketType)(packet[0] & 0b_1111_0000);
 
-                Console.WriteLine("Incoming Packet: " + packetType);
+                if (debug)
+                {
+                    Console.WriteLine("Incoming Packet: " + packetType);
+                }
 
                 // Handle the packet based on the packet type
                 switch (packetType)
@@ -99,7 +102,7 @@ namespace Mqtt.Client.Network
                         OnSubAck?.Invoke(SubAckPacket.Decode(packet));
                         break;
                     case PacketType.UNSUBACK:
-                        OnUnsubAck?.Invoke(UnsubscribePacket.Decode(packet));
+                        OnUnSubAck?.Invoke(UnSubAckPacket.Decode(packet));
                         break;
                     case PacketType.PINGREQ:
                         OnPingReq?.Invoke(PingReqPacket.Decode(packet));

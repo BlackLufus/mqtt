@@ -114,7 +114,7 @@ namespace Mqtt.Client.Packets
 
             if (LastWill != null)
             {
-                Console.WriteLine("Set Will Flag");
+                //Console.WriteLine("Set Will Flag");
                 byte[] topicArray = new byte[2 + LastWill.Topic.Length];
                 topicArray[0] = (byte)(LastWill.Topic.Length >> 8);
                 topicArray[1] = (byte)(LastWill.Topic.Length & 0xFF);
@@ -130,7 +130,7 @@ namespace Mqtt.Client.Packets
 
             if (Username.Length > 0)
             {
-                Console.WriteLine("Set Username Flag");
+                //Console.WriteLine("Set Username Flag");
                 byte[] usernameArray = new byte[2 + Username!.Length];
                 usernameArray[0] = (byte)(Username.Length >> 8);
                 usernameArray[1] = (byte)(Username.Length & 0xFF);
@@ -164,12 +164,12 @@ namespace Mqtt.Client.Packets
             Array.Copy(header.ToArray(), 0, data, 2, header.Count);
             Array.Copy(payload.ToArray(), 0, data, 2 + header.Count, payload.Count);
 
-            Console.WriteLine("Connect Packet: " + header.Count);
+            /*Console.WriteLine("Connect Packet: " + header.Count);
             for (int i = 0; i < header.Count; i++)
             {
                 Console.WriteLine(Convert.ToString(header[i], 2).PadLeft(8, '0'));
             }
-            Console.WriteLine("=====================================");
+            Console.WriteLine("=====================================");*/
 
             return data;
         }

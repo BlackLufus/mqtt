@@ -8,18 +8,15 @@ using Mqtt.Client;
 
 namespace Mqtt.Client.Packets
 {
-    public class PublishPacket(string topic, string message, QualityOfService qos = 0, bool retain = false, bool dup = false, int packetID = -1)
+    public class PublishPacket(int packetId, string topic, string message, QualityOfService qos = 0, bool retain = false, bool dup = false)
     {
-        private static Dictionary<int, PublishPacket> pendingPackets = [];
-        public static Dictionary<int, PublishPacket> PendingPackets => pendingPackets;
-
-        private static int packetID = 0;
-        public static int NextPacketID
+        private static int packetId = 0;
+        public static int NextPacketId
         {
             get
             {
-                packetID++;
-                return packetID;
+                packetId++;
+                return packetId;
             }
         }
 
@@ -30,7 +27,7 @@ namespace Mqtt.Client.Packets
 
         // Variable Header (Topic, Packet ID)
         public string Topic { get; set; } = topic;
-        public int PacketID { get; set; } = packetID;
+        public int PacketID { get; set; } = packetId;
 
         // Payload (Message)
         public string Message { get; set; } = message;
@@ -39,6 +36,8 @@ namespace Mqtt.Client.Packets
         {
             // Fixed Header
             byte fixedHeader = (byte)((byte)PacketType.PUBLISH | (DUP ? 1 : 0) << 3 | (int)QoS << 1 | (Retain ? 1 : 0));
+
+            Console.WriteLine(fixedHeader.ToString());
 
             // Variable Header
             byte[] topicBytes = Encoding.UTF8.GetBytes(Topic);
@@ -127,14 +126,10 @@ namespace Mqtt.Client.Packets
             // Berechne die Länge der Payload
             int payloadLength = remainingLength - (offset - 2);
 
-            Debug.WriteLine("Remaining Length: " + remainingLength);
-            Debug.WriteLine("Left: " + (data.Length - offset));
-            Debug.WriteLine("Payload Length: " + payloadLength);
-
             // Payload (Message)
             string message = Encoding.UTF8.GetString(data, offset, payloadLength);
 
-            return new PublishPacket(topic, message, qos, retain, dup, packetID);
+            return new PublishPacket(packetID, topic, message, qos, retain, dup);
         }
     }
 }

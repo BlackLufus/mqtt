@@ -6,20 +6,20 @@ using System.Threading.Tasks;
 
 namespace Mqtt.Client.Packets
 {
-    public class UnsubscribePacket(int packetID, string[] topics)
+    public class UnsubscribePacket(int packetId, Topic[] topics)
     {
-        private static int packetID = 0;
-        public static int NextPacketID
+        private static int packetId = 0;
+        public static int NextPacketId
         {
             get
             {
-                packetID++;
-                return packetID;
+                packetId++;
+                return packetId;
             }
         }
 
-        public int PacketID { get; } = packetID;
-        public string[] Topics { get; } = topics;
+        public int PacketId { get; } = packetId;
+        public Topic[] Topics { get; } = topics;
 
         public byte[] Encode()
         {
@@ -27,16 +27,16 @@ namespace Mqtt.Client.Packets
             byte fixedHeader = (byte)PacketType.UNSUBSCRIBE | 0b_0010;
 
             // Variable Header
-            byte[] packetIDBytes = new byte[] { (byte)(PacketID >> 8), (byte)(PacketID & 0xFF) };
+            byte[] packetIDBytes = new byte[] { (byte)(PacketId >> 8), (byte)(PacketId & 0xFF) };
 
             // Payload
             List<byte> payload = new List<byte>();
-            foreach (string topic in Topics)
+            foreach (Topic topic in Topics)
             {
-                byte[] topicBytes = Encoding.UTF8.GetBytes(topic);
-                byte[] topicLengthBytes = new byte[] { (byte)(topicBytes.Length >> 8), (byte)(topicBytes.Length & 0xFF) };
+                byte[] topicNameBytes = Encoding.UTF8.GetBytes(topic.Name);
+                byte[] topicLengthBytes = new byte[] { (byte)(topicNameBytes.Length >> 8), (byte)(topicNameBytes.Length & 0xFF) };
                 payload.AddRange(topicLengthBytes);
-                payload.AddRange(topicBytes);
+                payload.AddRange(topicNameBytes);
             }
 
             // Remaining Length
@@ -64,14 +64,15 @@ namespace Mqtt.Client.Packets
             int packetID = data[2] << 8 | data[3];
 
             // Payload
-            List<string> topics = new List<string>();
+            List<Topic> topics = new List<Topic>();
             int index = 4;
             while (index < remainingLength + 4)
             {
                 int topicLength = data[index] << 8 | data[index + 1];
-                string topic = Encoding.UTF8.GetString(data, index + 2, topicLength);
-                topics.Add(topic);
+                index += 2;
+                string topicName = Encoding.UTF8.GetString(data, index + 2, topicLength);
                 index += 2 + topicLength;
+                topics.Add(new Topic(topicName));
             }
 
             return new UnsubscribePacket(packetID, topics.ToArray());

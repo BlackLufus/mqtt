@@ -23,10 +23,10 @@ namespace Mqtt.Client.Network
             Send(connectPacket.Encode());
         }
 
-        public void SendPublish(int id, string topic, string message, bool isDup = false)
+        public void SendPublish(int id, string topic, string message, QualityOfService qos, bool isDup = false)
         {
             // Publish Packet
-            PublishPacket publishPacket = new PublishPacket(topic, message, option.QoS, option.WillRetain, isDup, id);
+            PublishPacket publishPacket = new PublishPacket(id, topic, message, qos, option.WillRetain, isDup);
 
             // Send the message and flush the stream
             Send(publishPacket.Encode());
@@ -88,19 +88,19 @@ namespace Mqtt.Client.Network
             Send(pubCompPacket.Encode());
         }
 
-        public void SendSubscribe(int id, string topic)
+        public void SendSubscribe(int id, Topic[] topics)
         {
             // Subscribe Packet
-            SubscribePacket subscribe = new SubscribePacket(id, [topic], option.QoS);
+            SubscribePacket subscribe = new SubscribePacket(id, topics);
 
             // Send the message and flush the stream
             Send(subscribe.Encode());
         }
 
-        public void SendUnsubscribe(int id, string topic)
+        public void SendUnsubscribe(int id, Topic[] topics)
         {
             // Unsubscribe Packet
-            UnsubscribePacket unsubscribePacket = new UnsubscribePacket(id, [topic]);
+            UnsubscribePacket unsubscribePacket = new UnsubscribePacket(id, topics);
 
             // Send the message and flush the stream
             Send(unsubscribePacket.Encode());
@@ -134,6 +134,10 @@ namespace Mqtt.Client.Network
         {
             try
             {
+                if (option.Debug)
+                {
+                    Console.WriteLine("Send: " + (PacketType)(data[0] & 0b_1111_0000));
+                }
                 await stream!.WriteAsync(data);
                 stream!.Flush();
             }
