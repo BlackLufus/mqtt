@@ -1,6 +1,7 @@
 ﻿// See https://aka.ms/new-console-template for more information
 using Mqtt.Client;
 using Mqtt.Client.ReasonCode;
+using System.Diagnostics;
 using static System.Net.Mime.MediaTypeNames;
 
 await Start();
@@ -18,9 +19,7 @@ async Task Start()
     Console.WriteLine("MQTT");
     // Create a new MQTT client instance
     MqttClient mqtt = new(
-    //"broker-cn.emqx.io",
-        "test.mosquitto.org",
-        1883,
+        //"test.mosquitto.org"
         new MqttOption
         {
             Version = MqttVersion.MQTT_3_1_1,
@@ -40,11 +39,28 @@ async Task Start()
     mqtt.OnSubscribed += (topic, qos) => Console.WriteLine("Subscribed to: " + topic);
     mqtt.OnUnsubscribed += (topic) => Console.WriteLine("Unsubscribed from: " + topic);
     mqtt.OnDisconnected += (reason) => Console.WriteLine("Disconnected: " + reason);
+    mqtt.OnError += (at, message) => Console.WriteLine("Error at '" + at + "': " + message);
 
     // Connect to the broker
-    //await mqtt.Connect("test.mosquitto.org", 1883, "Client_0815");
+    await mqtt.Connect("test.mosquitto.org", 1883, "Client_0815");
     //await mqtt.Connect("broker-cn.emqx.io", 1883, "Client_0815");
-    await mqtt.Connect("Client_0815");
+    //await mqtt.Connect("broker-cn.emqx.io", 1883, "Client_0815");
+
+    Task.Delay(1000).Wait();
+
+    await mqtt.SubscribeAsync([new Topic("uutestuu", QualityOfService.EXACTLY_ONCE)]);
+
+    Task.Delay(1000).Wait();
+
+    mqtt.Publish(new Topic("uutestuu", QualityOfService.EXACTLY_ONCE), "Hello World 1");
+
+    Task.Delay(1000).Wait();
+
+    mqtt.Disconnect();
+
+    Task.Delay(1000).Wait();
+
+    await mqtt.Connect("broker-cn.emqx.io", 1883, "Client_0815");
 
     //mqtt.Subscribe("test/#");
     // Publish a message
@@ -62,7 +78,7 @@ async Task Start()
 
     Task.Delay(5000).Wait();
 
-    await mqtt.SubscribeAsync("uutestuu");
+    await mqtt.SubscribeAsync("uutestuu", QualityOfService.EXACTLY_ONCE);
 
     // Unsubscribe from a topic
     await mqtt.UnsubscribeAsync("uutestuu");

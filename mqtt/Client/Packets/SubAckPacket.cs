@@ -7,9 +7,9 @@ using System.Threading.Tasks;
 
 namespace Mqtt.Client.Packets
 {
-    public class SubAckPacket(int packetID, SubAckReasonCode[] returnCodes)
+    public class SubAckPacket(ushort packetID, SubAckReasonCode[] returnCodes)
     {
-        public int PacketID { get; } = packetID;
+        public ushort PacketID { get; } = packetID;
 
         public SubAckReasonCode[] ReturnCodes { get; } = returnCodes;
 
@@ -44,7 +44,7 @@ namespace Mqtt.Client.Packets
             int remainingLength = data[1];
 
             // Variable Header (Packet ID)
-            int packetID = data[2] << 8 | data[3];
+            ushort packetID = (ushort)(data[2] << 8 | data[3]);
 
             // Payload
             SubAckReasonCode[] returnCodes = new SubAckReasonCode[remainingLength - 2];

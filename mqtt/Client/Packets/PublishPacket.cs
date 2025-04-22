@@ -8,18 +8,8 @@ using Mqtt.Client;
 
 namespace Mqtt.Client.Packets
 {
-    public class PublishPacket(int packetId, string topic, string message, QualityOfService qos = 0, bool retain = false, bool dup = false)
+    public class PublishPacket(ushort? id, string topic, string message, QualityOfService qos = 0, bool retain = false, bool dup = false)
     {
-        private static int packetId = 0;
-        public static int NextPacketId
-        {
-            get
-            {
-                packetId++;
-                return packetId;
-            }
-        }
-
         // Fixed Header (DUP, QoS, Retain)
         public bool DUP { get; set; } = dup;
         public QualityOfService QoS { get; set; } = qos;
@@ -27,7 +17,7 @@ namespace Mqtt.Client.Packets
 
         // Variable Header (Topic, Packet ID)
         public string Topic { get; set; } = topic;
-        public int PacketID { get; set; } = packetId;
+        public ushort PacketID { get; set; } = (ushort)(id.HasValue ? id : PacketIdHandler.GetFreeId());
 
         // Payload (Message)
         public string Message { get; set; } = message;
@@ -116,10 +106,10 @@ namespace Mqtt.Client.Packets
             string topic = Encoding.UTF8.GetString(data, offset + 2, topicLength);
             offset += 2 + topicLength;
 
-            int packetID = -1;
+            ushort packetID = 0;
             if (qos > 0)
             {
-                packetID = (data[offset] << 8) + data[offset + 1];
+                packetID = (ushort)((data[offset] << 8) + data[offset + 1]);
                 offset += 2;
             }
 

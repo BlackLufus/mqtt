@@ -1,11 +1,13 @@
 ﻿using Mqtt.Client;
 using Mqtt.Client.Network;
 using Mqtt.Client.Packets;
+using Mqtt.Client.Queue;
 using Mqtt.Client.ReasonCode;
 using Mqtt.Packets;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO.Pipes;
 using System.Linq;
 using System.Net.Http;
 using System.Net.Sockets;
@@ -14,10 +16,13 @@ using System.Threading.Tasks;
 
 namespace Mqtt.Client
 {
-    public class MqttClient : IMqttClient
+    public class MqttClient(MqttOption mqttOption) : IMqttClient
     {
         public delegate void ConnectionEstablishedDelegate(bool sessionPresent, ConnectReturnCode returnCode);
         public event ConnectionEstablishedDelegate? OnConnectionEstablished;
+
+        public delegate void ReconnectingDelegate();
+        public event ReconnectingDelegate? OnReconnection;
 
         public delegate void ConnectionLostDelegate();
         public event ConnectionLostDelegate? OnConnectionLost;
@@ -37,63 +42,61 @@ namespace Mqtt.Client
         public delegate void UnsubscribedDelegate(string topic);
         public event UnsubscribedDelegate? OnUnsubscribed;
 
-        private readonly string host;
-        private readonly int port;
+        public delegate void ErrorDelegate(string at, string message);
+        public event ErrorDelegate? OnError;
+
+        private const int ConnectionTimeoutMs = 3000;
 
         private TcpClient? tcpClient;
         private NetworkStream? stream;
-        private CancellationTokenSource? cts;
 
-        private readonly MqttOption mqttOption;
+        private readonly MqttOption mqttOption = mqttOption;
 
-        private readonly MqttMonitor mqttMonitor;
-        private readonly PacketQueueHandler incomingPacketQueueHandler;
-        private readonly PacketQueueHandler outgoingPacketQueueHandler;
+        private readonly MqttMonitor mqttMonitor = new();
+        private readonly PacketQueueHandler incomingPacketQueueHandler = new("incoming");
+        private readonly PacketQueueHandler outgoingPacketQueueHandler = new("outgoing");
         private OutgoingHandler? outgoingHandler;
         private IncomingHandler? incomingHandler;
 
+        private string host = "";
+        private int port = 1883;
         private string clientID = "";
         private string username = "";
         private string password = "";
 
-        public MqttClient(string host, int port, MqttOption mqttOption)
-        {
-            if (host.Equals(""))
-            {
-                throw new Exception("Broker address is empty!");
-            }
-            else if (port < 0 || port > 65535)
-            {
-                throw new Exception("Port is invalid!");
-            }
-
-            this.host = host;
-            this.port = port;
-            this.mqttOption = mqttOption;
-            mqttMonitor = new MqttMonitor();
-            incomingPacketQueueHandler = new PacketQueueHandler();
-            outgoingPacketQueueHandler = new PacketQueueHandler();
-        }
-
-        public async Task Connect(string clientID, string username = "", string password = "")
+        public async Task Connect(string host, int port, string clientID, string username = "", string password = "")
         {
             if (mqttMonitor.IsConnected)
             {
+                OnError?.Invoke("Connect", "Client is already connected!");
                 return;
             }
             else
             {
                 mqttMonitor.ResetVariables();
-
+                if (host.Equals(""))
+                {
+                    OnError?.Invoke("Connect", "Broker address is empty!");
+                    return;
+                }
+                else if (port < 0 || port > 65535)
+                {
+                    OnError?.Invoke("Connect", "Port is invalid! (" + port + ")");
+                    return;
+                }
                 if (clientID.Equals(""))
                 {
-                    throw new Exception("Client ID is empty!");
+                    OnError?.Invoke("Connect", "Client ID is empty!");
+                    return;
                 }
                 else if (clientID.Length > 23)
                 {
-                    throw new Exception("Client ID is too long!");
+                    OnError?.Invoke("Connect", "Client ID is too long! (max. 23)");
+                    return;
                 }
 
+                this.host = host;
+                this.port = port;
                 this.clientID = clientID;
                 this.username = username;
                 this.password = password;
@@ -101,230 +104,207 @@ namespace Mqtt.Client
                 try
                 {
                     Init();
-
-                    StartListeners();
-
                     await HandleConnect();
                 }
                 catch (Exception ex)
                 {
                     OnConnectionFailed?.Invoke(ex.Message);
+                    Terminate(true);
                 }
             }
         }
 
         public void Publish(string topic, string message, QualityOfService qos = QualityOfService.AT_MOST_ONCE)
         {
-            PublishPacket publishPacket = new PublishPacket(PublishPacket.NextPacketId, topic, message, qos, mqttOption.WillRetain, false);
-            outgoingPacketQueueHandler.Add(new QueuePacket(publishPacket.PacketID, PacketType.PUBLISH, publishPacket));
+            Publish(new Topic(topic, qos), message);
         }
 
         public async Task PublishAsync(string topic, string message, QualityOfService qos = QualityOfService.AT_MOST_ONCE)
         {
-            PublishPacket publishPacket = new PublishPacket(PublishPacket.NextPacketId, topic, message, qos, mqttOption.WillRetain, false);
-
-            var tcs = new TaskCompletionSource<bool>();
-
-            void OnPacketAcknowledged(int id, PacketType packetType)
-            {
-                if (id == publishPacket.PacketID && packetType == PacketType.PUBLISH)
-                {
-                    outgoingPacketQueueHandler.OnPacketProcessed -= OnPacketAcknowledged;
-                    Task.Run(() => tcs.SetResult(true)).ConfigureAwait(false);
-                }
-            }
-
-            outgoingPacketQueueHandler.OnPacketProcessed += OnPacketAcknowledged;
-            outgoingPacketQueueHandler.Add(new QueuePacket(publishPacket.PacketID, PacketType.PUBLISH, publishPacket));
-
-            await tcs.Task;
+            await PublishAsync(new Topic(topic, qos), message);
         }
 
         public void Publish(Topic topic, string message)
         {
-            PublishPacket publishPacket = new PublishPacket(PublishPacket.NextPacketId, topic.Name, message, topic.QoS, mqttOption.WillRetain, false);
-            outgoingPacketQueueHandler.Add(new QueuePacket(publishPacket.PacketID, PacketType.PUBLISH, publishPacket));
+            if (CheckForError("Publish"))
+            {
+                return;
+            }
+            PublishPacket publishPacket = new(null, topic.Name, message, topic.QoS, mqttOption.WillRetain, false);
+            outgoingPacketQueueHandler.Enqueue(
+                new PendingPacket(
+                    publishPacket.PacketID,
+                    PacketType.PUBLISH,
+                    publishPacket
+                ));
         }
 
         public async Task PublishAsync(Topic topic, string message)
         {
-            PublishPacket publishPacket = new PublishPacket(PublishPacket.NextPacketId, topic.Name, message, topic.QoS, mqttOption.WillRetain, false);
+            if (CheckForError("Publish"))
+            {
+                return;
+            }
+            PublishPacket publishPacket = new(null, topic.Name, message, topic.QoS, mqttOption.WillRetain, false);
 
             var tcs = new TaskCompletionSource<bool>();
 
-            void OnPacketAcknowledged(int id, PacketType packetType)
+            void OnPacketAcknowledged(int id)
             {
-                if (id == publishPacket.PacketID && packetType == PacketType.PUBLISH)
+                if (id == publishPacket.PacketID)
                 {
                     outgoingPacketQueueHandler.OnPacketProcessed -= OnPacketAcknowledged;
-                    Task.Run(() => tcs.SetResult(true)).ConfigureAwait(false);
+                    tcs.SetResult(true);
                 }
             }
 
             outgoingPacketQueueHandler.OnPacketProcessed += OnPacketAcknowledged;
-            outgoingPacketQueueHandler.Add(new QueuePacket(publishPacket.PacketID, PacketType.PUBLISH, publishPacket));
+            outgoingPacketQueueHandler.Enqueue(
+                new PendingPacket(
+                    publishPacket.PacketID,
+                    PacketType.PUBLISH,
+                    publishPacket
+                ));
 
             await tcs.Task;
         }
 
         public void Subscribe(string topic, QualityOfService qos = QualityOfService.AT_MOST_ONCE)
         {
-            SubscribePacket subscribePacket = new SubscribePacket(SubscribePacket.NextPacketId, [new Topic(topic, qos)]);
-            outgoingPacketQueueHandler.Add(new QueuePacket(subscribePacket.PacketId, PacketType.SUBSCRIBE, subscribePacket));
+            Subscribe([new Topic(topic, qos)]);
         }
 
         public async Task SubscribeAsync(string topic, QualityOfService qos = QualityOfService.AT_MOST_ONCE)
         {
-            SubscribePacket subscribePacket = new SubscribePacket(SubscribePacket.NextPacketId, [new Topic(topic, qos)]);
-
-            var tcs = new TaskCompletionSource<bool>();
-
-            void OnPacketAcknowledged(int id, PacketType packetType)
-            {
-                if (id == subscribePacket.PacketId && packetType == PacketType.SUBSCRIBE)
-                {
-                    outgoingPacketQueueHandler.OnPacketProcessed -= OnPacketAcknowledged;
-                    Task.Run(() => tcs.SetResult(true)).ConfigureAwait(false);
-                }
-            }
-
-            outgoingPacketQueueHandler.OnPacketProcessed += OnPacketAcknowledged;
-            outgoingPacketQueueHandler.Add(new QueuePacket(subscribePacket.PacketId, PacketType.SUBSCRIBE, subscribePacket));
-
-            await tcs.Task;
+            await SubscribeAsync([new Topic(topic, qos)]);
         }
 
         public void Subscribe(Topic topic)
         {
-            SubscribePacket subscribePacket = new SubscribePacket(SubscribePacket.NextPacketId, [topic]);
-            outgoingPacketQueueHandler.Add(new QueuePacket(subscribePacket.PacketId, PacketType.SUBSCRIBE, subscribePacket));
+            Subscribe([topic]);
         }
 
         public async Task SubscribeAsync(Topic topic)
         {
-            SubscribePacket subscribePacket = new SubscribePacket(SubscribePacket.NextPacketId, [topic]);
-
-            var tcs = new TaskCompletionSource<bool>();
-
-            void OnPacketAcknowledged(int id, PacketType packetType)
-            {
-                if (id == subscribePacket.PacketId && packetType == PacketType.SUBSCRIBE)
-                {
-                    outgoingPacketQueueHandler.OnPacketProcessed -= OnPacketAcknowledged;
-                    Task.Run(() => tcs.SetResult(true)).ConfigureAwait(false);
-                }
-            }
-
-            outgoingPacketQueueHandler.OnPacketProcessed += OnPacketAcknowledged;
-            outgoingPacketQueueHandler.Add(new QueuePacket(subscribePacket.PacketId, PacketType.SUBSCRIBE, subscribePacket));
-
-            await tcs.Task;
+            await SubscribeAsync([topic]);
         }
 
         public void Subscribe(Topic[] topics)
         {
-            SubscribePacket subscribePacket = new SubscribePacket(SubscribePacket.NextPacketId, topics);
-            outgoingPacketQueueHandler.Add(new QueuePacket(subscribePacket.PacketId, PacketType.SUBSCRIBE, subscribePacket));
+            if (CheckForError("Subscribe"))
+            {
+                return;
+            }
+            SubscribePacket subscribePacket = new(null, topics);
+            outgoingPacketQueueHandler.Enqueue(
+                new PendingPacket(
+                    subscribePacket.PacketId,
+                    PacketType.SUBSCRIBE,
+                    subscribePacket
+                ));
         }
 
         public async Task SubscribeAsync(Topic[] topics)
         {
-            SubscribePacket subscribePacket = new SubscribePacket(SubscribePacket.NextPacketId, topics);
+            if (CheckForError("Subscribe"))
+            {
+                return;
+            }
+            SubscribePacket subscribePacket = new(null, topics);
 
             var tcs = new TaskCompletionSource<bool>();
 
-            void OnPacketAcknowledged(int id, PacketType packetType)
+            void OnPacketAcknowledged(int id)
             {
-                if (id == subscribePacket.PacketId && packetType == PacketType.SUBSCRIBE)
+                if (id == subscribePacket.PacketId)
                 {
                     outgoingPacketQueueHandler.OnPacketProcessed -= OnPacketAcknowledged;
-                    Task.Run(() => tcs.SetResult(true)).ConfigureAwait(false);
+                    tcs.SetResult(true);
                 }
             }
 
             outgoingPacketQueueHandler.OnPacketProcessed += OnPacketAcknowledged;
-            outgoingPacketQueueHandler.Add(new QueuePacket(subscribePacket.PacketId, PacketType.SUBSCRIBE, subscribePacket));
+            outgoingPacketQueueHandler.Enqueue(
+                new PendingPacket(
+                    subscribePacket.PacketId,
+                    PacketType.SUBSCRIBE,
+                    subscribePacket
+                ));
 
             await tcs.Task;
         }
 
         public void Unsubscribe(string topic)
         {
-            UnsubscribePacket unsubscribePacket = new UnsubscribePacket(UnsubscribePacket.NextPacketId, [new Topic(topic)]);
-            outgoingPacketQueueHandler.Add(new QueuePacket(unsubscribePacket.PacketId, PacketType.UNSUBSCRIBE, unsubscribePacket));
+            Unsubscribe([new Topic(topic)]);
         }
 
         public async Task UnsubscribeAsync(string topic)
         {
-            UnsubscribePacket unsubscribePacket = new UnsubscribePacket(UnsubscribePacket.NextPacketId, [new Topic(topic)]);
-
-            var tcs = new TaskCompletionSource<bool>();
-
-            void OnPacketAcknowledged(int id, PacketType packetType)
-            {
-                if (id == unsubscribePacket.PacketId && packetType == PacketType.UNSUBSCRIBE)
-                {
-                    outgoingPacketQueueHandler.OnPacketProcessed -= OnPacketAcknowledged;
-                    Task.Run(() => tcs.SetResult(true)).ConfigureAwait(false);
-                }
-            }
-            outgoingPacketQueueHandler.OnPacketProcessed += OnPacketAcknowledged;
-            outgoingPacketQueueHandler.Add(new QueuePacket(unsubscribePacket.PacketId, PacketType.UNSUBSCRIBE, unsubscribePacket));
-            await tcs.Task;
+            await UnsubscribeAsync([new Topic(topic)]);
         }
 
         public void Unsubscribe(Topic topic)
         {
-            UnsubscribePacket unsubscribePacket = new UnsubscribePacket(UnsubscribePacket.NextPacketId, [topic]);
-            outgoingPacketQueueHandler.Add(new QueuePacket(unsubscribePacket.PacketId, PacketType.UNSUBSCRIBE, unsubscribePacket));
+            Unsubscribe([topic]);
         }
 
         public async Task UnsubscribeAsync(Topic topic)
         {
-            UnsubscribePacket unsubscribePacket = new UnsubscribePacket(UnsubscribePacket.NextPacketId, [topic]);
-
-            var tcs = new TaskCompletionSource<bool>();
-
-            void OnPacketAcknowledged(int id, PacketType packetType)
-            {
-                if (id == unsubscribePacket.PacketId && packetType == PacketType.UNSUBSCRIBE)
-                {
-                    outgoingPacketQueueHandler.OnPacketProcessed -= OnPacketAcknowledged;
-                    Task.Run(() => tcs.SetResult(true)).ConfigureAwait(false);
-                }
-            }
-            outgoingPacketQueueHandler.OnPacketProcessed += OnPacketAcknowledged;
-            outgoingPacketQueueHandler.Add(new QueuePacket(unsubscribePacket.PacketId, PacketType.UNSUBSCRIBE, unsubscribePacket));
-            await tcs.Task;
+            await UnsubscribeAsync([topic]);
         }
 
         public void Unsubscribe(Topic[] topics)
         {
-            UnsubscribePacket unsubscribePacket = new UnsubscribePacket(UnsubscribePacket.NextPacketId, topics);
-            outgoingPacketQueueHandler.Add(new QueuePacket(unsubscribePacket.PacketId, PacketType.UNSUBSCRIBE, unsubscribePacket));
+            if (CheckForError("Unsubscribe"))
+            {
+                return;
+            }
+            UnsubscribePacket unsubscribePacket = new(null, topics);
+            outgoingPacketQueueHandler.Enqueue(
+                new PendingPacket(
+                    unsubscribePacket.PacketId,
+                    PacketType.UNSUBSCRIBE,
+                    unsubscribePacket
+                ));
         }
 
         public async Task UnsubscribeAsync(Topic[] topics)
         {
-            UnsubscribePacket unsubscribePacket = new UnsubscribePacket(UnsubscribePacket.NextPacketId, topics);
+            if (CheckForError("Unsubscribe"))
+            {
+                return;
+            }
+            UnsubscribePacket unsubscribePacket = new(null, topics);
 
             var tcs = new TaskCompletionSource<bool>();
 
-            void OnPacketAcknowledged(int id, PacketType packetType)
+            void OnPacketAcknowledged(int id)
             {
-                if (id == unsubscribePacket.PacketId && packetType == PacketType.UNSUBSCRIBE)
+                if (id == unsubscribePacket.PacketId)
                 {
                     outgoingPacketQueueHandler.OnPacketProcessed -= OnPacketAcknowledged;
-                    Task.Run(() => tcs.SetResult(true)).ConfigureAwait(false);
+                    tcs.SetResult(true);
                 }
             }
             outgoingPacketQueueHandler.OnPacketProcessed += OnPacketAcknowledged;
-            outgoingPacketQueueHandler.Add(new QueuePacket(unsubscribePacket.PacketId, PacketType.UNSUBSCRIBE, unsubscribePacket));
+            outgoingPacketQueueHandler.Enqueue(
+                new PendingPacket(
+                    unsubscribePacket.PacketId, 
+                    PacketType.UNSUBSCRIBE, 
+                    unsubscribePacket
+                ));
             await tcs.Task;
         }
 
-        public void Disconnect(bool triggerEvent = true)
+        public void Disconnect()
         {
+            Terminate(false);
+        }
+
+        private void Terminate(bool isConnectionLost)
+        {
+            Console.WriteLine("Test1");
             if (!mqttMonitor.IsConnected && mqttMonitor.IsConnectionClosed)
             {
                 return;
@@ -333,15 +313,14 @@ namespace Mqtt.Client
             mqttMonitor.IsConnectionClosed = true;
             mqttMonitor.IsConnected = false;
 
-            if (triggerEvent)
+            if (!isConnectionLost)
             {
-                incomingPacketQueueHandler.Clear();
-                outgoingPacketQueueHandler.Clear();
                 OnDisconnected?.Invoke();
             }
 
-            cts?.Cancel();
-            cts?.Dispose();
+            mqttMonitor.Dispose();
+            incomingPacketQueueHandler.Dispose(isConnectionLost);
+            outgoingPacketQueueHandler.Dispose(isConnectionLost);
 
             // Close the stream
             if (stream != null)
@@ -362,21 +341,34 @@ namespace Mqtt.Client
         private void ConnectionLost()
         {
             Debug.WriteLine("Connection lost!");
-            Disconnect(false);
+            Terminate(true);
             OnConnectionLost?.Invoke();
             Reconnect();
         }
 
         private async void Reconnect()
         {
-            while (!mqttMonitor.IsConnected)
+            int attempts = 0;
+            int maxAttempts = 10;
+
+            while (!mqttMonitor.IsConnected && attempts < maxAttempts)
             {
+                attempts++;
+
                 if (mqttOption.Debug)
                 {
-                    Console.WriteLine("Reconnecting...");
+                    OnReconnection?.Invoke();
                 }
-                await Connect(clientID, username, password);
+                try
+                {
+                    await Connect(host, port, clientID, username, password);
+                }
+                catch { }
                 await Task.Delay(5000);
+            }
+            if (!mqttMonitor.IsConnected)
+            {
+                OnConnectionFailed?.Invoke("Failed to reconnect!");
             }
         }
 
@@ -387,117 +379,135 @@ namespace Mqtt.Client
 
             outgoingHandler = new OutgoingHandler(mqttOption, stream);
             incomingHandler = new IncomingHandler();
-            incomingHandler.OnConnAck += (connAckPacket) =>
-            {
-                if (mqttMonitor.IsConnected)
-                {
-                    OnConnectionLost?.Invoke();
-                    OnConnectionEstablished?.Invoke(connAckPacket.SessionPresent, connAckPacket.ReturnCode);
-                    return;
-                }
+            incomingHandler.OnConnAck += HandleConnAck;
+            incomingHandler.OnPublish += HandlePublish;
+            incomingHandler.OnPubAck += HandlePubAck;
+            incomingHandler.OnPubRec += HandlePubRec;
+            incomingHandler.OnPubRel += HandlePubRel;
+            incomingHandler.OnPubComp += HandlePubComp;
+            incomingHandler.OnSubAck += HandleSubAck;
+            incomingHandler.OnUnSubAck += HandleUnsubAck;
+            incomingHandler.OnDisconnect += HandleDisconnect;
+            incomingHandler.Start(stream!, mqttMonitor, mqttOption);
 
-                // Invoke the ConnectionSuccess event
-                OnConnectionEstablished?.Invoke(connAckPacket.SessionPresent, connAckPacket.ReturnCode);
+            incomingPacketQueueHandler.Start(mqttMonitor, outgoingHandler);
+            outgoingPacketQueueHandler.Start(mqttMonitor, outgoingHandler);
 
-                // Set the connection state
-                mqttMonitor.IsConnected = true;
-
-                OnConnected();
-            };
-            incomingHandler.OnPublish += (PublishPacket publishPacket) =>
-            {
-                // Verarbeite je nach QoS-Stufe
-                switch (publishPacket.QoS)
-                {
-                    case QualityOfService.AT_MOST_ONCE: // QoS 0 - "At most once"
-                        OnMessageReceived?.Invoke(publishPacket.Topic, publishPacket.Message, publishPacket.QoS, publishPacket.Retain);
-                        break;
-                    case QualityOfService.AT_LEAST_ONCE: // QoS 1 - "At least once"
-                        outgoingHandler.SendPubAck(publishPacket.PacketID);
-                        OnMessageReceived?.Invoke(publishPacket.Topic, publishPacket.Message, publishPacket.QoS, publishPacket.Retain);
-                        break;
-                    case QualityOfService.EXACTLY_ONCE: // QoS 2 - "Exactly once"
-                        incomingPacketQueueHandler.Add(new QueuePacket(
-                            publishPacket.PacketID,
-                            PacketType.PUBREC,
-                            publishPacket
-                        ));
-                        break;
-                }
-            };
-            incomingHandler.OnPubAck += (PubAckPacket pubAckPacket) =>
-            {
-                outgoingPacketQueueHandler.PacketReceived(pubAckPacket.PacketID, PacketType.PUBLISH, PacketType.PUBACK);
-            };
-
-            incomingHandler.OnPubRec += (PubRecPacket pubRecPacket) =>
-            {
-                outgoingPacketQueueHandler.PacketReceived(pubRecPacket.PacketID, PacketType.PUBLISH, PacketType.PUBREL);
-            };
-
-            incomingHandler.OnPubRel += (PubRelPacket pubRelPacket) =>
-            {
-                PublishPacket publishPacket = (PublishPacket)incomingPacketQueueHandler.Get.Packet!;
-                incomingPacketQueueHandler.PacketReceived(pubRelPacket.PacketID, PacketType.PUBREC, PacketType.PUBCOMP);
-                OnMessageReceived?.Invoke(publishPacket.Topic, publishPacket.Message, publishPacket.QoS, publishPacket.Retain);
-            };
-
-            incomingHandler.OnPubComp += (PubCompPacket pubCompPacket) =>
-            {
-                outgoingPacketQueueHandler.PacketReceived(pubCompPacket.PacketID, PacketType.PUBREL, PacketType.PUBCOMP);
-            };
-            incomingHandler.OnSubAck += (SubAckPacket subAckPacket) =>
-            {
-                outgoingPacketQueueHandler.PacketReceived(subAckPacket.PacketID, PacketType.SUBSCRIBE, PacketType.SUBACK);
-                SubscribePacket subscribePacket = (SubscribePacket)outgoingPacketQueueHandler.Get.Packet!;
-                foreach (Topic topic in subscribePacket.Topics)
-                {
-                    OnSubscribed?.Invoke(topic.Name, topic.QoS);
-                }
-            };
-            incomingHandler.OnUnSubAck += (UnSubAckPacket unSubAckPacket) =>
-            {
-                UnsubscribePacket unsubscribePacket = (UnsubscribePacket)outgoingPacketQueueHandler.Get.Packet!;
-                outgoingPacketQueueHandler.PacketReceived(unSubAckPacket.PacketID, PacketType.UNSUBSCRIBE, PacketType.UNSUBACK);
-                foreach (Topic topic in unsubscribePacket.Topics)
-                {
-                    OnUnsubscribed?.Invoke(topic.Name);
-                }
-            };
-            incomingHandler.OnDisconnect += (DisconnectPacket disconnectPacket) =>
-            {
-                OnDisconnected?.Invoke(disconnectPacket.ReasonCode ?? DisconnectReasionCode.NORMAL_DISCONNECTION);
-            };
-        }
-
-        private void StartListeners()
-        {
-            cts = new CancellationTokenSource();
-
-            incomingHandler!.IncomingPacketListener(cts, stream!, mqttMonitor, mqttOption);
-
-            incomingPacketQueueHandler.Start(cts, mqttMonitor, outgoingHandler!);
-            outgoingPacketQueueHandler.Start(cts, mqttMonitor, outgoingHandler!);
+            outgoingHandler.SendConnect(clientID, username, password);
         }
 
         private async Task HandleConnect()
         {
-            outgoingHandler!.SendConnect(clientID, username, password);
-
-            int elapsed = 0;
-            int timeout = 3000;
-            while (!mqttMonitor.IsConnected && !mqttMonitor.IsConnectionClosed && elapsed < timeout)
+            int attempts = 0;
+            while (!mqttMonitor.IsConnected && !mqttMonitor.IsConnectionClosed && attempts < ConnectionTimeoutMs)
             {
-                elapsed += 50;
+                attempts += 50;
                 await Task.Delay(50);
             }
         }
 
-        private void OnConnected()
+        private void HandleConnAck(ConnAckPacket connAckPacket)
         {
-            mqttMonitor.Start(tcpClient!, cts!, mqttOption.KeepAlive, outgoingHandler!.SendPingReq);
-            mqttMonitor.OnDisconnect += () => Disconnect();
+            if (mqttMonitor.IsConnected)
+            {
+                OnConnectionLost?.Invoke();
+                OnConnectionEstablished?.Invoke(connAckPacket.SessionPresent, connAckPacket.ReturnCode);
+                return;
+            }
+
+            // Invoke the ConnectionSuccess event
+            OnConnectionEstablished?.Invoke(connAckPacket.SessionPresent, connAckPacket.ReturnCode);
+
+            // Set the connection state
+            mqttMonitor.IsConnected = true;
+
+            mqttMonitor.Start(tcpClient!, mqttOption.KeepAlive, outgoingHandler!.SendPingReq);
+            mqttMonitor.OnDisconnect += () => Terminate(false);
             mqttMonitor.OnConnectionLost += ConnectionLost;
+        }
+
+        private void HandlePublish(PublishPacket pubPacket)
+        {
+            switch (pubPacket.QoS)
+            {
+                case QualityOfService.AT_MOST_ONCE: // QoS 0 - "At most once"
+                    OnMessageReceived?.Invoke(pubPacket.Topic, pubPacket.Message, pubPacket.QoS, pubPacket.Retain);
+                    break;
+                case QualityOfService.AT_LEAST_ONCE: // QoS 1 - "At least once"
+                    outgoingHandler?.SendPubAck(pubPacket.PacketID);
+                    OnMessageReceived?.Invoke(pubPacket.Topic, pubPacket.Message, pubPacket.QoS, pubPacket.Retain);
+                    break;
+                case QualityOfService.EXACTLY_ONCE: // QoS 2 - "Exactly once"
+                    incomingPacketQueueHandler.Enqueue(
+                        new PendingPacket(
+                            pubPacket.PacketID,
+                            PacketType.PUBREC,
+                            pubPacket,
+                            false
+                        )
+                    );
+                    break;
+            }
+        }
+
+        private void HandlePubAck(PubAckPacket pubAckPacket)
+        {
+            outgoingPacketQueueHandler.Update(pubAckPacket.PacketID, PacketType.PUBACK);
+        }
+
+        private void HandlePubRec(PubRecPacket pubRecPacket)
+        {
+            outgoingPacketQueueHandler.Update(pubRecPacket.PacketID, PacketType.PUBREL);
+        }
+
+        private void HandlePubRel(PubRelPacket pubRelPacket)
+        {
+            PublishPacket publishPacket = (PublishPacket)incomingPacketQueueHandler.Update(pubRelPacket.PacketID, PacketType.PUBCOMP)!;
+            OnMessageReceived?.Invoke(publishPacket.Topic, publishPacket.Message, publishPacket.QoS, publishPacket.Retain);
+        }
+
+        private void HandlePubComp(PubCompPacket pubCompPacket)
+        {
+            Console.WriteLine("Completed");
+            outgoingPacketQueueHandler.Update(pubCompPacket.PacketID, PacketType.PUBCOMP);
+        }
+
+        private void HandleSubAck(SubAckPacket subAckPacket)
+        {
+            SubscribePacket subscribePacket = (SubscribePacket)outgoingPacketQueueHandler.Update(subAckPacket.PacketID, PacketType.SUBACK)!;
+            foreach (Topic topic in subscribePacket.Topics)
+            {
+                OnSubscribed?.Invoke(topic.Name, topic.QoS);
+            }
+        }
+
+        private void HandleUnsubAck(UnSubAckPacket unsubAckPacket)
+        {
+            UnsubscribePacket unsubscribePacket = (UnsubscribePacket)outgoingPacketQueueHandler.Update(unsubAckPacket.PacketID, PacketType.UNSUBACK)!;
+            foreach (Topic topic in unsubscribePacket.Topics)
+            {
+                OnUnsubscribed?.Invoke(topic.Name);
+            }
+        }
+
+        private void HandleDisconnect(DisconnectPacket disconnectPacket)
+        {
+            OnDisconnected?.Invoke(disconnectPacket.ReasonCode ?? DisconnectReasionCode.NORMAL_DISCONNECTION);
+        }
+
+        private bool CheckForError(string at)
+        {
+            if (!mqttMonitor.IsConnected)
+            {
+                OnError?.Invoke(at, "Client is not connected");
+                return true;
+            }
+            if (mqttMonitor.IsConnectionClosed)
+            {
+                OnError?.Invoke(at, "Connection is closed!");
+                return true;
+            }
+            return false;
         }
     }
 }

@@ -7,9 +7,9 @@ using System.Threading.Tasks;
 
 namespace Mqtt.Packets
 {
-    public class PubRelPacket(int packetID)
+    public class PubRelPacket(ushort packetID)
     {
-        public int PacketID { get; } = packetID;
+        public ushort PacketID { get; } = packetID;
 
         public byte[] Encode()
         {
@@ -42,7 +42,7 @@ namespace Mqtt.Packets
             int remainingLength = data[1];
 
             // Variable Header
-            int packetID = data[2] << 8 | data[3];
+            ushort packetID = (ushort)(data[2] << 8 | data[3]);
 
             return new PubRelPacket(packetID);
         }

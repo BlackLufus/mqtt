@@ -27,8 +27,16 @@ namespace Mqtt.Client.Network
         public delegate void DisconnectHandler();
         public event DisconnectHandler? OnDisconnect;
 
-        public void Start(TcpClient tcpClient, CancellationTokenSource cts, int keepAlive, Action SendPingReq)
+        private CancellationTokenSource? cts;
+
+        public void Start(TcpClient tcpClient, int keepAlive, Action SendPingReq)
         {
+            if (cts != null)
+            {
+                Debug.WriteLine("Packet queue is already runnning!");
+                return;
+            }
+            cts = new CancellationTokenSource();
             Debug.WriteLine("MqttMonitor started");
 
             CancellationToken token = cts.Token;
@@ -133,6 +141,9 @@ namespace Mqtt.Client.Network
 
         public void Dispose()
         {
+            cts?.Cancel();
+            cts?.Dispose();
+            cts = null;
             GC.SuppressFinalize(this);
         }
     }

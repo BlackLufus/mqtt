@@ -7,9 +7,9 @@ using System.Threading.Tasks;
 
 namespace Mqtt.Client.Packets
 {
-    public class UnSubAckPacket(int packetID)
+    public class UnSubAckPacket(ushort packetID)
     {
-        public int PacketID { get; } = packetID;
+        public ushort PacketID { get; } = packetID;
 
         public byte[] Encode()
         {
@@ -41,7 +41,7 @@ namespace Mqtt.Client.Packets
             int remainingLength = data[1];
 
             // Variable Header (Packet ID)
-            int packetID = data[2] << 8 | data[3];
+            ushort packetID = (ushort)(data[2] << 8 | data[3]);
 
             return new UnSubAckPacket(packetID);
         }

@@ -15,7 +15,7 @@ namespace Mqtt.Client
         /// <param name="username">The optional username for authentication (default is empty).</param>
         /// <param name="password">The optional password for authentication (default is empty).</param>
         /// <returns>A task representing the asynchronous operation of the connection.</returns>
-        public Task Connect(string clientID, string username = "", string password = "");
+        public Task Connect(string host, int port, string clientID, string username = "", string password = "");
 
         /// <summary>
         /// Publishes a message to the specified topic with the given Quality of Service (QoS) level.
@@ -136,7 +136,6 @@ namespace Mqtt.Client
         /// Disconnects from the MQTT broker.
         /// Optionally triggers an event after disconnecting.
         /// </summary>
-        /// <param name="triggerEvent">Determines whether to trigger an event after disconnecting (default is true).</param>
-        public void Disconnect(bool triggerEvent = true);
+        public void Disconnect();
     }
 }

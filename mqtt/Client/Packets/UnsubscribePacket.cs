@@ -6,19 +6,9 @@ using System.Threading.Tasks;
 
 namespace Mqtt.Client.Packets
 {
-    public class UnsubscribePacket(int packetId, Topic[] topics)
+    public class UnsubscribePacket(ushort? id, Topic[] topics)
     {
-        private static int packetId = 0;
-        public static int NextPacketId
-        {
-            get
-            {
-                packetId++;
-                return packetId;
-            }
-        }
-
-        public int PacketId { get; } = packetId;
+        public ushort PacketId { get; } = (ushort)(id.HasValue ? id : PacketIdHandler.GetFreeId());
         public Topic[] Topics { get; } = topics;
 
         public byte[] Encode()
@@ -61,7 +51,7 @@ namespace Mqtt.Client.Packets
             int remainingLength = data[1];
 
             // Variable Header
-            int packetID = data[2] << 8 | data[3];
+            ushort packetID = (ushort)(data[2] << 8 | data[3]);
 
             // Payload
             List<Topic> topics = new List<Topic>();

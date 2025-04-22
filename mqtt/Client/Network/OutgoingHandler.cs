@@ -23,7 +23,7 @@ namespace Mqtt.Client.Network
             Send(connectPacket.Encode());
         }
 
-        public void SendPublish(int id, string topic, string message, QualityOfService qos, bool isDup = false)
+        public void SendPublish(ushort id, string topic, string message, QualityOfService qos, bool isDup = false)
         {
             // Publish Packet
             PublishPacket publishPacket = new PublishPacket(id, topic, message, qos, option.WillRetain, isDup);
@@ -37,7 +37,7 @@ namespace Mqtt.Client.Network
         /// </summary>
         /// <param name="MSB"> Message ID MSB </param>
         /// <param name="LSB"> Message ID LSB </param>
-        public void SendPubAck(int packetId)
+        public void SendPubAck(ushort packetId)
         {
             // PubAck Packet
             PubAckPacket pubAckPacket = new PubAckPacket(packetId);
@@ -51,7 +51,7 @@ namespace Mqtt.Client.Network
         /// </summary>
         /// <param name="MSB"> Message ID MSB </param>
         /// <param name="LSB"> Message ID LSB </param>
-        public void SendPubRec(int packetId)
+        public void SendPubRec(ushort packetId)
         {
             // PubRec Packet
             PubRecPacket pubRecPacket = new PubRecPacket(packetId);
@@ -65,7 +65,7 @@ namespace Mqtt.Client.Network
         /// </summary>
         /// <param name="MSB"> Message ID MSB </param>
         /// <param name="LSB"> Message ID LSB </param>
-        public void SendPubRel(int packetId)
+        public void SendPubRel(ushort packetId)
         {
             // PubRel Packet
             PubRelPacket pubRelPacket = new PubRelPacket(packetId);
@@ -79,7 +79,7 @@ namespace Mqtt.Client.Network
         /// </summary>
         /// <param name="MSB"> Message ID MSB </param>
         /// <param name="LSB"> Message ID LSB </param>
-        public void SendPubComp(int packetId)
+        public void SendPubComp(ushort packetId)
         {
             // PubComp Packet
             PubCompPacket pubCompPacket = new PubCompPacket(packetId);
@@ -88,7 +88,7 @@ namespace Mqtt.Client.Network
             Send(pubCompPacket.Encode());
         }
 
-        public void SendSubscribe(int id, Topic[] topics)
+        public void SendSubscribe(ushort id, Topic[] topics)
         {
             // Subscribe Packet
             SubscribePacket subscribe = new SubscribePacket(id, topics);
@@ -97,7 +97,7 @@ namespace Mqtt.Client.Network
             Send(subscribe.Encode());
         }
 
-        public void SendUnsubscribe(int id, Topic[] topics)
+        public void SendUnsubscribe(ushort id, Topic[] topics)
         {
             // Unsubscribe Packet
             UnsubscribePacket unsubscribePacket = new UnsubscribePacket(id, topics);

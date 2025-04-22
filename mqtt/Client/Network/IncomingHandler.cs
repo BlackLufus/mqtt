@@ -26,8 +26,16 @@ namespace Mqtt.Client.Network
         public event Action<PingRespPacket>? OnPingResp;
         public event Action<DisconnectPacket>? OnDisconnect;
 
-        public void IncomingPacketListener(CancellationTokenSource cts, NetworkStream stream, MqttMonitor mqttMonitorm, MqttOption mqttOption)
+        private CancellationTokenSource? cts;
+
+        public void Start(NetworkStream stream, MqttMonitor mqttMonitorm, MqttOption mqttOption)
         {
+            if (cts != null)
+            {
+                Debug.WriteLine("Incoming Packet Listener is already running!");
+                return;
+            }
+            cts = new CancellationTokenSource();
             Debug.WriteLine("Incoming Packet Listener started");
 
             CancellationToken token = cts.Token;
@@ -51,8 +59,6 @@ namespace Mqtt.Client.Network
 
                     // Handle the incoming packet
                     //Debug.WriteLine("Bytes read: " + bytesRead);
-
-                    token.ThrowIfCancellationRequested();
 
                     HandleIncomingPacket(bytesRead, buffer, mqttOption.Debug);
                 } while (bytesRead > 0);
@@ -126,6 +132,11 @@ namespace Mqtt.Client.Network
 
         public void Dispose()
         {
+            if (cts != null)
+            {
+                cts.Cancel();
+                cts = null;
+            }
             GC.SuppressFinalize(this);
         }
     }
