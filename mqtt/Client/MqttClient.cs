@@ -1,18 +1,11 @@
-﻿using Mqtt.Client;
-using Mqtt.Client.Network;
+﻿using Mqtt.Client.Network;
 using Mqtt.Client.Packets;
 using Mqtt.Client.Queue;
 using Mqtt.Client.ReasonCode;
 using Mqtt.Packets;
-using System;
-using System.Collections.Generic;
+using mqtt_wpf.Client.Validation;
 using System.Diagnostics;
-using System.IO.Pipes;
-using System.Linq;
-using System.Net.Http;
 using System.Net.Sockets;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace Mqtt.Client
 {
@@ -65,62 +58,41 @@ namespace Mqtt.Client
         private string username = "";
         private string password = "";
 
+        // Connect to the MQTT broker
         public async Task Connect(string host, int port, string clientID, string username = "", string password = "")
         {
-            if (isConnecting || mqttMonitor.IsClientConnected || mqttMonitor.IsConnectionEstablished)
+            if (CheckConnect(host, port, clientID, username, password))
             {
-                OnError?.Invoke("Connect", "Client is already connected!");
                 return;
             }
-            else
+            isConnecting = true;
+
+            this.host = host;
+            this.port = port;
+            this.clientID = clientID;
+            this.username = username;
+            this.password = password;
+
+            try
             {
-                isConnecting = true;
-                if (host.Equals(""))
-                {
-                    OnError?.Invoke("Connect", "Broker address is empty!");
-                    return;
-                }
-                else if (port < 0 || port > 65535)
-                {
-                    OnError?.Invoke("Connect", "Port is invalid! (" + port + ")");
-                    return;
-                }
-                if (clientID.Equals(""))
-                {
-                    OnError?.Invoke("Connect", "Client ID is empty!");
-                    return;
-                }
-                else if (clientID.Length > 23)
-                {
-                    OnError?.Invoke("Connect", "Client ID is too long! (max. 23)");
-                    return;
-                }
-
-                this.host = host;
-                this.port = port;
-                this.clientID = clientID;
-                this.username = username;
-                this.password = password;
-
-                try
-                {
-                    await EstablishConnection(host, port, clientID, username, password);
-                }
-                catch (Exception ex)
-                {
-                    OnConnectionFailed?.Invoke(ex.Message);
-                    Terminate(true);
-                }
-                finally
-                {
-                    isConnecting = false;
-                }
+                await EstablishConnection(host, port, clientID, username, password);
+            }
+            catch (SocketException)
+            {
+                OnConnectionFailed?.Invoke("A connection could not be established because the target computer refused the connection.");
+                Terminate(true);
+            }
+            finally
+            {
+                isConnecting = false;
             }
         }
 
+        // Establish the connection with the MQTT broker
         private async Task EstablishConnection(string host, int port, string clientID, string username, string password)
         {
-            tcpClient = new TcpClient(host, port);
+            tcpClient = new TcpClient();
+            await tcpClient.ConnectAsync(host, port);
             // Grund verbindung war erfolgreich
 
             stream = tcpClient.GetStream();
@@ -166,19 +138,22 @@ namespace Mqtt.Client
             }
         }
 
+        // Publish a message to a topic with the specified quality of service
         public void Publish(string topic, string message, QualityOfService qos = QualityOfService.AT_MOST_ONCE)
         {
             Publish(new Topic(topic, qos), message);
         }
 
+        // Asynchronously publish a message to a topic with the specified quality of service
         public async Task PublishAsync(string topic, string message, QualityOfService qos = QualityOfService.AT_MOST_ONCE)
         {
             await PublishAsync(new Topic(topic, qos), message);
         }
 
+        // Publish a message to a topic with the specified quality of service
         public void Publish(Topic topic, string message)
         {
-            if (CheckForError("Publish"))
+            if (CheckPublish(topic, message))
             {
                 return;
             }
@@ -191,9 +166,10 @@ namespace Mqtt.Client
                 ));
         }
 
+        // Asynchronously publish a message to a topic with the specified quality of service
         public async Task PublishAsync(Topic topic, string message)
         {
-            if (CheckForError("Publish"))
+            if (CheckPublish(topic, message))
             {
                 return;
             }
@@ -221,29 +197,34 @@ namespace Mqtt.Client
             await tcs.Task;
         }
 
+        // Subscribe to a topic with the specified quality of service
         public void Subscribe(string topic, QualityOfService qos = QualityOfService.AT_MOST_ONCE)
         {
             Subscribe([new Topic(topic, qos)]);
         }
 
+        // Asynchronously subscribe to a topic with the specified quality of service
         public async Task SubscribeAsync(string topic, QualityOfService qos = QualityOfService.AT_MOST_ONCE)
         {
             await SubscribeAsync([new Topic(topic, qos)]);
         }
 
+        // Subscribe to a topic
         public void Subscribe(Topic topic)
         {
             Subscribe([topic]);
         }
 
+        // Asynchronously subscribe to a topic
         public async Task SubscribeAsync(Topic topic)
         {
             await SubscribeAsync([topic]);
         }
 
+        // Subscribe to multiple topics
         public void Subscribe(Topic[] topics)
         {
-            if (CheckForError("Subscribe"))
+            if (CheckSubscribe(topics))
             {
                 return;
             }
@@ -256,9 +237,10 @@ namespace Mqtt.Client
                 ));
         }
 
+        // Asynchronously subscribe to multiple topics
         public async Task SubscribeAsync(Topic[] topics)
         {
-            if (CheckForError("Subscribe"))
+            if (CheckSubscribe(topics))
             {
                 return;
             }
@@ -286,32 +268,38 @@ namespace Mqtt.Client
             await tcs.Task;
         }
 
+        // Unsubscribe from a topic
         public void Unsubscribe(string topic)
         {
             Unsubscribe([new Topic(topic)]);
         }
 
+        // Asynchronously unsubscribe from a topic
         public async Task UnsubscribeAsync(string topic)
         {
             await UnsubscribeAsync([new Topic(topic)]);
         }
 
+        // Unsubscribe from a topic
         public void Unsubscribe(Topic topic)
         {
             Unsubscribe([topic]);
         }
 
+        // Asynchronously unsubscribe from a topic
         public async Task UnsubscribeAsync(Topic topic)
         {
             await UnsubscribeAsync([topic]);
         }
 
+        // Unsubscribe from multiple topics
         public void Unsubscribe(Topic[] topics)
         {
-            if (CheckForError("Unsubscribe"))
+            if (CheckSubscribe(topics))
             {
                 return;
             }
+
             UnsubscribePacket unsubscribePacket = new(null, topics);
             outgoingPacketQueueHandler.Enqueue(
                 new PendingPacket(
@@ -321,12 +309,14 @@ namespace Mqtt.Client
                 ));
         }
 
+        // Asynchronously unsubscribe from multiple topics
         public async Task UnsubscribeAsync(Topic[] topics)
         {
-            if (CheckForError("Unsubscribe"))
+            if (CheckSubscribe(topics))
             {
                 return;
             }
+
             UnsubscribePacket unsubscribePacket = new(null, topics);
 
             var tcs = new TaskCompletionSource<bool>();
@@ -349,11 +339,13 @@ namespace Mqtt.Client
             await tcs.Task;
         }
 
+        // Disconnect from the MQTT broker
         public void Disconnect()
         {
             Terminate(false);
         }
 
+        // Terminate the connection
         private void Terminate(bool isConnectionLost)
         {
             if (!mqttMonitor.IsClientConnected)
@@ -385,6 +377,7 @@ namespace Mqtt.Client
             tcpClient?.Dispose();
         }
 
+        // Handle the event when the connection is lost
         private void ConnectionLost()
         {
             Terminate(true);
@@ -392,6 +385,7 @@ namespace Mqtt.Client
             Reconnect();
         }
 
+        // Reconnect to the MQTT broker
         private async void Reconnect()
         {
             int attempts = 0;
@@ -407,7 +401,7 @@ namespace Mqtt.Client
                 }
                 try
                 {
-                    await Connect(host, port, clientID, username, password);
+                    await EstablishConnection(host, port, clientID, username, password);
                 }
                 catch { }
                 await Task.Delay(ConnectionTimeout);
@@ -418,6 +412,7 @@ namespace Mqtt.Client
             }
         }
 
+        // Handle the CONNACK packet received from the broker
         private void HandleConnAck(ConnAckPacket connAckPacket)
         {
             // Invoke the ConnectionSuccess event
@@ -425,6 +420,7 @@ namespace Mqtt.Client
             mqttMonitor.IsClientConnected = true;
         }
 
+        // Handle the PUBLISH packet received from the broker
         private void HandlePublish(PublishPacket pubPacket)
         {
             switch (pubPacket.QoS)
@@ -449,27 +445,32 @@ namespace Mqtt.Client
             }
         }
 
+        // Handle the PUBACK packet received from the broker
         private void HandlePubAck(PubAckPacket pubAckPacket)
         {
             outgoingPacketQueueHandler.Update(pubAckPacket.PacketID, PacketType.PUBACK);
         }
 
+        // Handle the PUBREC packet received from the broker
         private void HandlePubRec(PubRecPacket pubRecPacket)
         {
             outgoingPacketQueueHandler.Update(pubRecPacket.PacketID, PacketType.PUBREL);
         }
 
+        // Handle the PUBREL packet received from the broker
         private void HandlePubRel(PubRelPacket pubRelPacket)
         {
             PublishPacket publishPacket = (PublishPacket)incomingPacketQueueHandler.Update(pubRelPacket.PacketID, PacketType.PUBCOMP)!;
             OnMessageReceived?.Invoke(publishPacket.Topic, publishPacket.Message, publishPacket.QoS, publishPacket.Retain);
         }
 
+        // Handle the PUBCOMP packet received from the broker
         private void HandlePubComp(PubCompPacket pubCompPacket)
         {
             outgoingPacketQueueHandler.Update(pubCompPacket.PacketID, PacketType.PUBCOMP);
         }
 
+        // Handle the SUBACK packet received from the broker
         private void HandleSubAck(SubAckPacket subAckPacket)
         {
             SubscribePacket subscribePacket = (SubscribePacket)outgoingPacketQueueHandler.Update(subAckPacket.PacketID, PacketType.SUBACK)!;
@@ -479,6 +480,7 @@ namespace Mqtt.Client
             }
         }
 
+        // Check for any error during the execution of a function
         private void HandleUnsubAck(UnSubAckPacket unsubAckPacket)
         {
             UnsubscribePacket unsubscribePacket = (UnsubscribePacket)outgoingPacketQueueHandler.Update(unsubAckPacket.PacketID, PacketType.UNSUBACK)!;
@@ -488,26 +490,63 @@ namespace Mqtt.Client
             }
         }
 
+        // Check for any error during the execution of a function
         private void HandleDisconnect(DisconnectPacket disconnectPacket)
         {
             OnDisconnected?.Invoke(disconnectPacket.ReasonCode ?? DisconnectReasionCode.NORMAL_DISCONNECTION);
         }
 
-        private bool CheckForError(string at)
+        // Check for any error during the execution of a function
+        private bool CheckConnect(string host, int port, string clientID, string username, string password)
         {
-            if (mqttMonitor.IsConnectionClosed)
+            (string, string)? error;
+            if ((error = MQTTValidator.CheckHost(host)) != null ||
+                (error = MQTTValidator.CheckPort(port)) != null ||
+                (error = MQTTValidator.CheckClientID(clientID)) != null ||
+                (error = MQTTValidator.CheckUsername(username)) != null ||
+                (error = MQTTValidator.CheckPassword(password)) != null ||
+                (error = MQTTValidator.CheckIsConnected(isConnecting, mqttMonitor)) != null)
             {
-                OnError?.Invoke(at, "There is no existing connection!");
+                OnError?.Invoke(error.Value.Item1, error.Value.Item2);
                 return true;
             }
-            else if (!mqttMonitor.IsConnectionEstablished)
+            return false;
+        }
+
+        // Check for any error during the execution of a function
+        private bool CheckPublish(Topic topic, string message)
+        {
+            (string, string)? error;
+            if ((error = MQTTValidator.CheckTopic(true, topic.Name)) != null ||
+                (error = MQTTValidator.CheckMessage(message)) != null ||
+                (error = MQTTValidator.CheckConnectionClosed(mqttMonitor)) != null ||
+                (error = MQTTValidator.CheckConnectionEstablished(mqttMonitor)) != null ||
+                (error = MQTTValidator.CheckClientConnected(mqttMonitor)) != null)
             {
-                OnError?.Invoke(at, "Connection is not established!");
+                OnError?.Invoke(error.Value.Item1, error.Value.Item2);
                 return true;
             }
-            else if (!mqttMonitor.IsClientConnected)
+            return false;
+        }
+
+        // Check for any error during the execution of a function
+        private bool CheckSubscribe(Topic[] topics)
+        {
+            (string, string)? error;
+            foreach (var topic in topics)
             {
-                OnError?.Invoke(at, "Client is not connected!");
+                error = MQTTValidator.CheckTopic(false, topic.Name);
+                if (error != null)
+                {
+                    OnError?.Invoke(error.Value.Item1, error.Value.Item2);
+                    return true;
+                }
+            }
+            if ((error = MQTTValidator.CheckConnectionClosed(mqttMonitor)) != null ||
+                (error = MQTTValidator.CheckConnectionEstablished(mqttMonitor)) != null ||
+                (error = MQTTValidator.CheckClientConnected(mqttMonitor)) != null)
+            {
+                OnError?.Invoke(error.Value.Item1, error.Value.Item2);
                 return true;
             }
             return false;
