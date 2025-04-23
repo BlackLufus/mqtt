@@ -5,17 +5,14 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
-using System.Linq;
 using System.Net.Sockets;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace Mqtt.Client.Network
 {
     public class IncomingHandler : IDisposable
     {
         public event Action<ConnAckPacket>? OnConnAck;
-        public event Action<PublishPacket>? OnPublish;
+        public event Func<PublishPacket, Task>? OnPublish;
         public event Action<PubAckPacket>? OnPubAck;
         public event Action<PubRecPacket>? OnPubRec;
         public event Action<PubRelPacket>? OnPubRel;

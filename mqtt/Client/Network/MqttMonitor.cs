@@ -1,10 +1,5 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Diagnostics;
-using System.Linq;
+﻿using System.Diagnostics;
 using System.Net.Sockets;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace Mqtt.Client.Network
 {
@@ -17,10 +12,10 @@ namespace Mqtt.Client.Network
 
     public class MqttMonitor : IDisposable
     {
-        public delegate void ConnectionLostHandler();
+        public delegate Task ConnectionLostHandler();
         public event ConnectionLostHandler? OnConnectionLost;
 
-        public delegate void DisconnectHandler();
+        public delegate Task DisconnectHandler();
         public event DisconnectHandler? OnDisconnect;
 
         private CancellationTokenSource? cts;
@@ -31,7 +26,7 @@ namespace Mqtt.Client.Network
         public bool IsConnectionClosed => isConnectionClosed;
         public bool IsClientConnected { get; set; } = false;
 
-        public void Start(TcpClient tcpClient, int keepAlive, Action SendPingReq)
+        public void Start(TcpClient tcpClient, int keepAlive, OutgoingHandler outgoingHandler)
         {
             if (!IsConnectionClosed)
             {
@@ -79,7 +74,7 @@ namespace Mqtt.Client.Network
                 {
                     await Task.Delay(keepAlive * 1000 / 2);
                     Debug.WriteLine("Send Ping Request");
-                    SendPingReq();
+                    await outgoingHandler.SendPingReq();
                 }
             }, token);
         }

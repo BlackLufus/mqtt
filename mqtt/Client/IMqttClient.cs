@@ -1,10 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
-namespace Mqtt.Client
+﻿namespace Mqtt.Client
 {
     public interface IMqttClient
     {
@@ -136,6 +130,6 @@ namespace Mqtt.Client
         /// Disconnects from the MQTT broker.
         /// Optionally triggers an event after disconnecting.
         /// </summary>
-        public void Disconnect();
+        public Task Disconnect();
     }
 }

@@ -42,7 +42,7 @@ async Task Start()
     mqtt.OnError += (at, message) => Console.WriteLine("Error at '" + at + "': " + message);
 
     // Connect to the broker
-    await mqtt.Connect("test.mosquitto.org", 1883, "Client_0815");
+    await mqtt.Connect("broker-cn.emqx.io", 1883, "Client_0815");
     //await mqtt.Connect("broker-cn.emqx.io", 1883, "Client_0815");
     //await mqtt.Connect("broker-cn.emqx.io", 1883, "Client_0815");
 
@@ -56,11 +56,12 @@ async Task Start()
 
     Task.Delay(1000).Wait();
 
-    mqtt.Disconnect();
+    await mqtt.Disconnect();
 
     Task.Delay(1000).Wait();
 
-    await mqtt.Connect("broker-cn.emqx.io", 1883, "Client_0815");
+    //await mqtt.Connect("broker-cn.emqx.io", 1883, "Client_0815");
+    await mqtt.Connect("test.mosquitto.org", 1883, "Client_0815");
 
     //mqtt.Subscribe("test/#");
     // Publish a message
@@ -91,7 +92,7 @@ async Task Start()
     Task.Delay(10000).Wait();
 
     // Disconnect from the broker
-    mqtt.Disconnect();
+    await mqtt.Disconnect();
 
     while (true)
     {
