@@ -2,7 +2,7 @@
 using Mqtt.Client.Packets;
 using System.Diagnostics;
 
-namespace Mqtt.Client.Queue2
+namespace Mqtt.Client.Queue
 {
     public class PendingPacketQueue
     {
@@ -70,7 +70,7 @@ namespace Mqtt.Client.Queue2
                             var id = tuple.Item2;
                             PendingPacket packet = pendingPacketDict[tuple];
 
-                            if (packet.SentAt == null || (DateTime.UtcNow - packet.SentAt) > packet.TimeoutSeconds)
+                            if (packet.SentAt == null || DateTime.UtcNow - packet.SentAt > packet.TimeoutSeconds)
                             {
                                 packet.SentAt = DateTime.UtcNow;
 

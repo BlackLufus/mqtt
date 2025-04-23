@@ -1,8 +1,8 @@
 ﻿using Mqtt.Client.Network;
 using Mqtt.Client.Packets;
+using Mqtt.Client.Queue;
 using Mqtt.Client.ReasonCode;
 using Mqtt.Packets;
-using Mqtt.Client.Queue2;
 using mqtt_wpf.Client.Validation;
 using System.Diagnostics;
 using System.Net.Sockets;

@@ -1,4 +1,4 @@
-﻿namespace Mqtt.Client.Queue2
+﻿namespace Mqtt.Client.Queue
 {
     public enum PendingPacketType
     {
