@@ -28,7 +28,7 @@ namespace Mqtt.Client.Network
 
         private CancellationTokenSource? cts;
 
-        public void Start(NetworkStream stream, MqttMonitor mqttMonitorm, MqttOption mqttOption)
+        public void Start(NetworkStream stream, MqttMonitor mqttMonitor, MqttOption mqttOption)
         {
             if (cts != null)
             {
@@ -80,7 +80,7 @@ namespace Mqtt.Client.Network
 
                 if (debug)
                 {
-                    Console.WriteLine("Incoming Packet: " + packetType);
+                    Debug.WriteLine("Incoming Packet: " + packetType);
                 }
 
                 // Handle the packet based on the packet type

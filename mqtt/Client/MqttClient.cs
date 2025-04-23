@@ -45,10 +45,11 @@ namespace Mqtt.Client
         public delegate void ErrorDelegate(string at, string message);
         public event ErrorDelegate? OnError;
 
-        private const int ConnectionTimeoutMs = 3000;
+        private TimeSpan ConnectionTimeout = TimeSpan.FromSeconds(5);
 
         private TcpClient? tcpClient;
         private NetworkStream? stream;
+        private bool isConnecting = false;
 
         private readonly MqttOption mqttOption = mqttOption;
 
@@ -66,14 +67,14 @@ namespace Mqtt.Client
 
         public async Task Connect(string host, int port, string clientID, string username = "", string password = "")
         {
-            if (mqttMonitor.IsConnected)
+            if (isConnecting || mqttMonitor.IsClientConnected || mqttMonitor.IsConnectionEstablished)
             {
                 OnError?.Invoke("Connect", "Client is already connected!");
                 return;
             }
             else
             {
-                mqttMonitor.ResetVariables();
+                isConnecting = true;
                 if (host.Equals(""))
                 {
                     OnError?.Invoke("Connect", "Broker address is empty!");
@@ -103,14 +104,65 @@ namespace Mqtt.Client
 
                 try
                 {
-                    Init();
-                    await HandleConnect();
+                    await EstablishConnection(host, port, clientID, username, password);
                 }
                 catch (Exception ex)
                 {
                     OnConnectionFailed?.Invoke(ex.Message);
                     Terminate(true);
                 }
+                finally
+                {
+                    isConnecting = false;
+                }
+            }
+        }
+
+        private async Task EstablishConnection(string host, int port, string clientID, string username, string password)
+        {
+            tcpClient = new TcpClient(host, port);
+            // Grund verbindung war erfolgreich
+
+            stream = tcpClient.GetStream();
+            // AUfbau des Streams über die verbindung
+
+            outgoingHandler = new OutgoingHandler(mqttOption, stream);
+            // Initieren der ausgehenden handlers
+
+            incomingHandler = new IncomingHandler();
+            incomingHandler.OnConnAck += HandleConnAck;
+            incomingHandler.OnPublish += HandlePublish;
+            incomingHandler.OnPubAck += HandlePubAck;
+            incomingHandler.OnPubRec += HandlePubRec;
+            incomingHandler.OnPubRel += HandlePubRel;
+            incomingHandler.OnPubComp += HandlePubComp;
+            incomingHandler.OnSubAck += HandleSubAck;
+            incomingHandler.OnUnSubAck += HandleUnsubAck;
+            incomingHandler.OnDisconnect += HandleDisconnect;
+            incomingHandler.Start(stream!, mqttMonitor, mqttOption);
+            // Initieren des eingehenden handlers 
+
+            mqttMonitor.Start(tcpClient, mqttOption.KeepAlive, outgoingHandler.SendPingReq);
+            mqttMonitor.OnDisconnect += () => Terminate(false);
+            mqttMonitor.OnConnectionLost += ConnectionLost;
+            // Startet die Netzwerk kontroller um zu überprüfen, ob die verbindung besteht oder nicht
+
+            outgoingHandler.SendConnect(clientID, username, password);
+
+            DateTime currentTime = DateTime.UtcNow;
+            while (!mqttMonitor.IsClientConnected && (DateTime.UtcNow - currentTime) < ConnectionTimeout)
+            {
+                await Task.Delay(50);
+            }
+            if (!mqttMonitor.IsConnectionClosed && mqttMonitor.IsConnectionEstablished && mqttMonitor.IsClientConnected)
+            {
+                Debug.WriteLine("Connected");
+                incomingPacketQueueHandler.Start(mqttMonitor, outgoingHandler);
+                outgoingPacketQueueHandler.Start(mqttMonitor, outgoingHandler);
+            }
+            else
+            {
+                OnConnectionFailed?.Invoke("Connection was not successful.");
             }
         }
 
@@ -304,16 +356,11 @@ namespace Mqtt.Client
 
         private void Terminate(bool isConnectionLost)
         {
-            Console.WriteLine("Test1");
-            if (!mqttMonitor.IsConnected && mqttMonitor.IsConnectionClosed)
+            if (!mqttMonitor.IsClientConnected)
             {
                 return;
             }
-
-            mqttMonitor.IsConnectionClosed = true;
-            mqttMonitor.IsConnected = false;
-
-            if (!isConnectionLost)
+            else if (!isConnectionLost)
             {
                 OnDisconnected?.Invoke();
             }
@@ -340,7 +387,6 @@ namespace Mqtt.Client
 
         private void ConnectionLost()
         {
-            Debug.WriteLine("Connection lost!");
             Terminate(true);
             OnConnectionLost?.Invoke();
             Reconnect();
@@ -351,7 +397,7 @@ namespace Mqtt.Client
             int attempts = 0;
             int maxAttempts = 10;
 
-            while (!mqttMonitor.IsConnected && attempts < maxAttempts)
+            while (!mqttMonitor.IsConnectionEstablished && !mqttMonitor.IsClientConnected && attempts < maxAttempts)
             {
                 attempts++;
 
@@ -364,66 +410,19 @@ namespace Mqtt.Client
                     await Connect(host, port, clientID, username, password);
                 }
                 catch { }
-                await Task.Delay(5000);
+                await Task.Delay(ConnectionTimeout);
             }
-            if (!mqttMonitor.IsConnected)
+            if (!mqttMonitor.IsConnectionEstablished && !mqttMonitor.IsClientConnected)
             {
                 OnConnectionFailed?.Invoke("Failed to reconnect!");
             }
         }
 
-        private void Init()
-        {
-            tcpClient = new TcpClient(host, port);
-            stream = tcpClient.GetStream();
-
-            outgoingHandler = new OutgoingHandler(mqttOption, stream);
-            incomingHandler = new IncomingHandler();
-            incomingHandler.OnConnAck += HandleConnAck;
-            incomingHandler.OnPublish += HandlePublish;
-            incomingHandler.OnPubAck += HandlePubAck;
-            incomingHandler.OnPubRec += HandlePubRec;
-            incomingHandler.OnPubRel += HandlePubRel;
-            incomingHandler.OnPubComp += HandlePubComp;
-            incomingHandler.OnSubAck += HandleSubAck;
-            incomingHandler.OnUnSubAck += HandleUnsubAck;
-            incomingHandler.OnDisconnect += HandleDisconnect;
-            incomingHandler.Start(stream!, mqttMonitor, mqttOption);
-
-            incomingPacketQueueHandler.Start(mqttMonitor, outgoingHandler);
-            outgoingPacketQueueHandler.Start(mqttMonitor, outgoingHandler);
-
-            outgoingHandler.SendConnect(clientID, username, password);
-        }
-
-        private async Task HandleConnect()
-        {
-            int attempts = 0;
-            while (!mqttMonitor.IsConnected && !mqttMonitor.IsConnectionClosed && attempts < ConnectionTimeoutMs)
-            {
-                attempts += 50;
-                await Task.Delay(50);
-            }
-        }
-
         private void HandleConnAck(ConnAckPacket connAckPacket)
         {
-            if (mqttMonitor.IsConnected)
-            {
-                OnConnectionLost?.Invoke();
-                OnConnectionEstablished?.Invoke(connAckPacket.SessionPresent, connAckPacket.ReturnCode);
-                return;
-            }
-
             // Invoke the ConnectionSuccess event
             OnConnectionEstablished?.Invoke(connAckPacket.SessionPresent, connAckPacket.ReturnCode);
-
-            // Set the connection state
-            mqttMonitor.IsConnected = true;
-
-            mqttMonitor.Start(tcpClient!, mqttOption.KeepAlive, outgoingHandler!.SendPingReq);
-            mqttMonitor.OnDisconnect += () => Terminate(false);
-            mqttMonitor.OnConnectionLost += ConnectionLost;
+            mqttMonitor.IsClientConnected = true;
         }
 
         private void HandlePublish(PublishPacket pubPacket)
@@ -468,7 +467,6 @@ namespace Mqtt.Client
 
         private void HandlePubComp(PubCompPacket pubCompPacket)
         {
-            Console.WriteLine("Completed");
             outgoingPacketQueueHandler.Update(pubCompPacket.PacketID, PacketType.PUBCOMP);
         }
 
@@ -497,14 +495,19 @@ namespace Mqtt.Client
 
         private bool CheckForError(string at)
         {
-            if (!mqttMonitor.IsConnected)
-            {
-                OnError?.Invoke(at, "Client is not connected");
-                return true;
-            }
             if (mqttMonitor.IsConnectionClosed)
             {
-                OnError?.Invoke(at, "Connection is closed!");
+                OnError?.Invoke(at, "There is no existing connection!");
+                return true;
+            }
+            else if (!mqttMonitor.IsConnectionEstablished)
+            {
+                OnError?.Invoke(at, "Connection is not established!");
+                return true;
+            }
+            else if (!mqttMonitor.IsClientConnected)
+            {
+                OnError?.Invoke(at, "Client is not connected!");
                 return true;
             }
             return false;
