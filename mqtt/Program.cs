@@ -25,9 +25,8 @@ async Task Start()
             Version = MqttVersion.MQTT_3_1_1,
             WillRetain = false,
             LastWill = new("uutestuu", "Goodbye World"),
-            CleanSession = true,
-            KeepAlive = 60,
-            Debug = true
+            CleanSession = false,
+            KeepAlive = 60
         }
     );
 
@@ -42,7 +41,7 @@ async Task Start()
     mqtt.OnError += (at, message) => Console.WriteLine("Error at '" + at + "': " + message);
 
     // Connect to the broker
-    await mqtt.Connect("broker-cn.emqx.io", 1883, "Client_0815");
+    await mqtt.Connect("test.mosquitto.org", 1883, "Client_0815");
     //await mqtt.Connect("broker-cn.emqx.io", 1883, "Client_0815");
     //await mqtt.Connect("broker-cn.emqx.io", 1883, "Client_0815");
 
