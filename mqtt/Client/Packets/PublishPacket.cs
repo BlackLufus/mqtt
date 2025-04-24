@@ -82,42 +82,60 @@ namespace Mqtt.Client.Packets
 
         public static PublishPacket Decode(byte[] data)
         {
+            int offset = 0;
+
             // Fixed Header
             byte fixedHeader = data[0];
             bool dup = (fixedHeader & 0x08) >> 3 == 1;
             QualityOfService qos = (QualityOfService)((fixedHeader & 0x06) >> 1);
             bool retain = (fixedHeader & 0x01) == 1;
+            offset += 1;
+
 
             // Remaining Length
             int multiplier = 1;
             int remainingLength = 0;
-            int offset = 1;
             byte currentByte;
             do
             {
                 currentByte = data[offset];
-                remainingLength += (currentByte & 0x7F) * multiplier;
+                remainingLength += (currentByte & 127) * multiplier;
                 multiplier *= 128;
-                offset++;
+                if (multiplier > 128 * 128 * 128)
+                    throw new Exception("Malformed Remining Length");
+                offset += 1;
             } while ((currentByte & 0x80) != 0);
 
-            // Variable Header (Topic Length, Topic, Packet ID)
-            int topicLength = (data[offset] << 8) + data[offset + 1];
-            string topic = Encoding.UTF8.GetString(data, offset + 2, topicLength);
-            offset += 2 + topicLength;
+            int startOffset = offset;
 
+
+            // Variable Header (Topic Length, Topic, Packet ID)
+            int topicLength = (data[offset] << 8) | data[offset + 1];
+            offset += 2;
+
+            // Topic
+            string topic = Encoding.UTF8.GetString(data, offset, topicLength);
+            offset += topicLength;
+
+
+            // Packet id
             ushort packetID = 0;
             if (qos > 0)
             {
-                packetID = (ushort)((data[offset] << 8) + data[offset + 1]);
+                packetID = (ushort)((data[offset] << 8) | data[offset + 1]);
                 offset += 2;
             }
 
-            // Berechne die Länge der Payload
-            int payloadLength = remainingLength - (offset - 2);
 
-            // Payload (Message)
+            // Length for header
+            int headerLength = offset - startOffset;
+
+            // Length for Payload (Message)
+            int payloadLength = value - headerLength;
+
+            //Payload (Message)
             string message = Encoding.UTF8.GetString(data, offset, payloadLength);
+            offset += payloadLength;
 
             return new PublishPacket(packetID, topic, message, qos, retain, dup);
         }
