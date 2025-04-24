@@ -131,7 +131,7 @@ namespace Mqtt.Client.Packets
             int headerLength = offset - startOffset;
 
             // Length for Payload (Message)
-            int payloadLength = value - headerLength;
+            int payloadLength = remainingLength - headerLength;
 
             //Payload (Message)
             string message = Encoding.UTF8.GetString(data, offset, payloadLength);
