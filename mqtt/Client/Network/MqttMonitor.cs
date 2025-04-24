@@ -10,7 +10,7 @@ namespace Mqtt.Client.Network
         ConnectionError
     }
 
-    public class MqttMonitor
+    public class MqttMonitor(Action<string>? debug)
     {
         public delegate Task ConnectionLostHandler();
         public event ConnectionLostHandler? OnConnectionLost;
@@ -30,14 +30,14 @@ namespace Mqtt.Client.Network
         {
             if (cts != null)
             {
-                Debug.WriteLine("Mqtt monitor is already runnning!");
+                debug?.Invoke("Mqtt monitor is already running!");
                 return;
             }
+            debug?.Invoke("Mqtt monitor is running now!");
 
             cts = new CancellationTokenSource();
             isConnectionClosed = false;
             isConnectionEstablished = true;
-            Debug.WriteLine("Mqtt monitor is runnning now!");
 
             cts = new CancellationTokenSource();
             CancellationToken token = cts.Token;
@@ -72,7 +72,6 @@ namespace Mqtt.Client.Network
                 while (!IsConnectionClosed)
                 {
                     await Task.Delay(keepAlive * 1000 / 2, token);
-                    Debug.WriteLine("Send Ping Request");
                     await outgoingHandler.SendPingReq();
                 }
             }, token);
@@ -104,24 +103,21 @@ namespace Mqtt.Client.Network
             }
             catch (SocketException ex)
             {
-                Console.WriteLine($"SocketException occurred: {ex.Message}");
+                debug?.Invoke($"SocketException occurred: {ex.Message}");
                 return ConnectionStatus.ConnectionError;
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Unexpected error occurred: {ex.Message}");
+                debug?.Invoke($"Unexpected error occurred: {ex.Message}");
                 return ConnectionStatus.ConnectionError;
             }
         }
 
         public void Dispose(bool closeConnection)
         {
-            if (cts != null)
-            {
-                Debug.WriteLine("stopping mqtt monitor!");
-                cts.Cancel();
-                cts = null;
-            }
+            debug?.Invoke("Mqtt monitor terminated");
+            cts?.Cancel();
+            cts = null;
 
             if (closeConnection)
             {

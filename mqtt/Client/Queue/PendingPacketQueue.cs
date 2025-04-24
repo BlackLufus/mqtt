@@ -4,7 +4,7 @@ using System.Diagnostics;
 
 namespace Mqtt.Client.Queue
 {
-    public class PendingPacketQueue
+    public class PendingPacketQueue(Action<string>? debug)
     {
         private CancellationTokenSource? cts;
 
@@ -45,11 +45,10 @@ namespace Mqtt.Client.Queue
         {
             if (cts != null)
             {
-                Debug.WriteLine("Packet queue task is already running!");
+                debug?.Invoke("Pending packet queue is already running!");
                 return;
             }
-
-            Debug.WriteLine("Packet queue task is running now!");
+            debug?.Invoke("Pending packet queue is running now!");
 
             cts = new CancellationTokenSource();
             CancellationToken token = cts.Token;
@@ -79,7 +78,6 @@ namespace Mqtt.Client.Queue
                                     case PacketType.PUBLISH:
                                         {
                                             PublishPacket publishPacket = (PublishPacket)packet.Bin!;
-                                            Debug.WriteLine(" -> Send PUBLISH! - " + packet.ID + " (" + publishPacket.QoS + ")");
                                             if (publishPacket.QoS == QualityOfService.AT_MOST_ONCE)
                                             {
                                                 await outgoingHandler!.SendPublish(id, publishPacket.Topic, publishPacket.Message, publishPacket.QoS);
@@ -98,25 +96,20 @@ namespace Mqtt.Client.Queue
                                             break;
                                         }
                                     case PacketType.PUBREC:
-                                        Debug.WriteLine(" -> Send PUBREC! - " + packet.ID);
                                         await outgoingHandler!.SendPubRec(id);
                                         break;
                                     case PacketType.PUBREL:
-                                        Debug.WriteLine(" -> Send PUBREL! - " + packet.ID);
                                         await outgoingHandler!.SendPubRel(id);
                                         break;
                                     case PacketType.PUBCOMP:
-                                        Debug.WriteLine(" -> Send PUBCOMP! - " + packet.ID);
                                         await outgoingHandler!.SendPubComp(id);
                                         Dequeue(type, id);
                                         break;
                                     case PacketType.SUBSCRIBE:
                                         SubscribePacket subscribePacket = (SubscribePacket)packet.Bin!;
-                                        Debug.WriteLine(" -> Send SUBSCRIBE! - " + packet.ID);
                                         await outgoingHandler!.SendSubscribe(id, subscribePacket.Topics);
                                         break;
                                     case PacketType.UNSUBSCRIBE:
-                                        Debug.WriteLine(" -> Send UNSUBSCRIBE! - " + packet.ID);
                                         UnsubscribePacket unsubscribePacket = (UnsubscribePacket)packet.Bin!;
                                         await outgoingHandler!.SendUnsubscribe(id, unsubscribePacket.Topics);
                                         break;
@@ -126,23 +119,20 @@ namespace Mqtt.Client.Queue
                     }
                     await Task.Delay(10);
                 }
-                Debug.WriteLine("Packet queue task terminated!");
             }, token);
         }
 
         public void Dispose(bool reset)
         {
+            debug?.Invoke("Pending packet queue terminated!");
             if (reset)
             {
                 pendingPacketQueue.Clear();
                 pendingPacketDict.Clear();
                 nextPendingPacket.Clear();
             }
-            if (cts != null)
-            {
-                cts.Cancel();
-                cts = null;
-            }
+            cts?.Cancel();
+            cts = null;
         }
     }
 }

@@ -5,16 +5,15 @@ using System.Net.Sockets;
 
 namespace Mqtt.Client.Network
 {
-    public class OutgoingHandler(MqttOption option, NetworkStream stream) : IDisposable
+    public class OutgoingHandler(MqttOption option, NetworkStream stream, Action<string>? debug) : IDisposable
     {
         // ToDo: Implement to Connect Packet in a separate class (ConnectPacket.cs)
         public async Task SendConnect(string clientId, string username, string password)
         {
             // Connect Packet
-            Debug.WriteLine("\n\n==========================================================================");
-            Debug.WriteLine("option.CleanSession: " + option.CleanSession);
-            Debug.WriteLine("==========================================================================\n\n");
             ConnectPacket connectPacket = new ConnectPacket(clientId, username, password, option.LastWill, option.WillRetain, option.QoS, option.CleanSession, option.Version, (ushort)option.KeepAlive, (uint)option.SessionExpiryInterval);
+
+            debug?.Invoke(" -> Send CONNECT packet (client id: " + clientId + ")");
 
             // Send the message and flush the stream
             await Send(connectPacket.Encode());
@@ -25,6 +24,8 @@ namespace Mqtt.Client.Network
             // Publish Packet
             PublishPacket publishPacket = new PublishPacket(id, topic, message, qos, option.WillRetain, isDup);
 
+            debug?.Invoke(" -> Send PUBLISH packet (id: " + id + ")");
+
             // Send the message and flush the stream
             await Send(publishPacket.Encode());
         }
@@ -34,10 +35,12 @@ namespace Mqtt.Client.Network
         /// </summary>
         /// <param name="MSB"> Message ID MSB </param>
         /// <param name="LSB"> Message ID LSB </param>
-        public async Task SendPubAck(ushort packetId)
+        public async Task SendPubAck(ushort id)
         {
             // PubAck Packet
-            PubAckPacket pubAckPacket = new PubAckPacket(packetId);
+            PubAckPacket pubAckPacket = new PubAckPacket(id);
+
+            debug?.Invoke(" -> Send PUBACK packet (id: " + id + ")");
 
             // Send the message and flush the stream
             await Send(pubAckPacket.Encode());
@@ -48,10 +51,12 @@ namespace Mqtt.Client.Network
         /// </summary>
         /// <param name="MSB"> Message ID MSB </param>
         /// <param name="LSB"> Message ID LSB </param>
-        public async Task SendPubRec(ushort packetId)
+        public async Task SendPubRec(ushort id)
         {
             // PubRec Packet
-            PubRecPacket pubRecPacket = new PubRecPacket(packetId);
+            PubRecPacket pubRecPacket = new PubRecPacket(id);
+
+            debug?.Invoke(" -> Send PUBREC packet (id: " + id + ")");
 
             // Send the message and flush the stream
             await Send(pubRecPacket.Encode());
@@ -62,10 +67,12 @@ namespace Mqtt.Client.Network
         /// </summary>
         /// <param name="MSB"> Message ID MSB </param>
         /// <param name="LSB"> Message ID LSB </param>
-        public async Task SendPubRel(ushort packetId)
+        public async Task SendPubRel(ushort id)
         {
             // PubRel Packet
-            PubRelPacket pubRelPacket = new PubRelPacket(packetId);
+            PubRelPacket pubRelPacket = new PubRelPacket(id);
+
+            debug?.Invoke(" -> Send PUBREL packet (id: " + id + ")");
 
             // Send the message and flush the stream
             await Send(pubRelPacket.Encode());
@@ -76,10 +83,12 @@ namespace Mqtt.Client.Network
         /// </summary>
         /// <param name="MSB"> Message ID MSB </param>
         /// <param name="LSB"> Message ID LSB </param>
-        public async Task SendPubComp(ushort packetId)
+        public async Task SendPubComp(ushort id)
         {
             // PubComp Packet
-            PubCompPacket pubCompPacket = new PubCompPacket(packetId);
+            PubCompPacket pubCompPacket = new PubCompPacket(id);
+
+            debug?.Invoke(" -> Send PUBCOMP packet (id: " + id + ")");
 
             // Send the message and flush the stream
             await Send(pubCompPacket.Encode());
@@ -90,6 +99,8 @@ namespace Mqtt.Client.Network
             // Subscribe Packet
             SubscribePacket subscribe = new SubscribePacket(id, topics);
 
+            debug?.Invoke(" -> Send SUBSCRIBE packet (id: " + id + ")");
+
             // Send the message and flush the stream
             await Send(subscribe.Encode());
         }
@@ -98,6 +109,8 @@ namespace Mqtt.Client.Network
         {
             // Unsubscribe Packet
             UnsubscribePacket unsubscribePacket = new UnsubscribePacket(id, topics);
+
+            debug?.Invoke(" -> Send UNSUBSCRIBE packet (id: " + id + ")");
 
             // Send the message and flush the stream
             await Send(unsubscribePacket.Encode());
@@ -111,6 +124,8 @@ namespace Mqtt.Client.Network
             // Ping Request Packet
             PingReqPacket pingReqPacket = new PingReqPacket();
 
+            debug?.Invoke(" -> Send PINGREQ packet");
+
             // Send the message and flush the stream
             await Send(pingReqPacket.Encode());
         }
@@ -123,6 +138,8 @@ namespace Mqtt.Client.Network
             // Disconnect Packet
             DisconnectPacket disconnectPacket = new DisconnectPacket();
 
+            debug?.Invoke(" -> Send DISCONNECT packet");
+
             // Send the message and flush the stream
             await Send(disconnectPacket.Encode());
         }
@@ -131,10 +148,6 @@ namespace Mqtt.Client.Network
         {
             try
             {
-                if (option.Debug)
-                {
-                    Debug.WriteLine("Send: " + (PacketType)(data[0] & 0b_1111_0000));
-                }
                 await stream!.WriteAsync(data);
             }
             catch { }
@@ -142,6 +155,7 @@ namespace Mqtt.Client.Network
 
         public void Dispose()
         {
+            debug?.Invoke("Outgoing handler terminated!");
             GC.SuppressFinalize(this);
         }
     }

@@ -12,6 +12,5 @@
         public bool CleanSession { get; set; } = true;
         public int KeepAlive { get; set; } = 20;
         public int SessionExpiryInterval { get; set; } = 10;
-        public bool Debug { get; set; } = false;
     }
 }

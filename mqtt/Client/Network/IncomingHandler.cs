@@ -9,7 +9,7 @@ using System.Net.Sockets;
 
 namespace Mqtt.Client.Network
 {
-    public class IncomingHandler : IDisposable
+    public class IncomingHandler(Action<string>? debug) : IDisposable
     {
         // Events raised when specific MQTT packets are received
         public event Action<ConnAckPacket>? OnConnAck;
@@ -62,7 +62,7 @@ namespace Mqtt.Client.Network
         /// <summary>
         /// Appends new bytes and processes as many complete MQTT packets as possible.
         /// </summary>
-        private void ProcessBuffer(int bytesRead, byte[] buffer, bool debug)
+        private void ProcessBuffer(int bytesRead, byte[] buffer)
         {
             // Ensure that only one thread at a time modifies the accumulated buffer
             lock (_bufferLock)
@@ -90,11 +90,11 @@ namespace Mqtt.Client.Network
                     try
                     {
                         object packet = DecodeFullPacket(packetBytes, packetType);
-                        HandleSinglePacket(packetType, packet, debug);
+                        HandleSinglePacket(packetType, packet);
                     }
                     catch (Exception ex)
                     {
-                        Debug.WriteLine($"Invalid packet: {ex.Message}");
+                        debug?.Invoke($"Invalid packet: {ex.Message}");
                         packetLength = _accumulatedBuffer.Length;
                     }
 
@@ -130,7 +130,7 @@ namespace Mqtt.Client.Network
         /// Starts an asynchronous loop reading from the network stream.
         /// Incoming data is buffered and processed.
         /// </summary>
-        public void Start(NetworkStream stream, MqttMonitor mqttMonitor, MqttOption mqttOption)
+        public void Start(NetworkStream stream)
         {
             if (cts != null)
             {
@@ -151,12 +151,12 @@ namespace Mqtt.Client.Network
                     {
                         try
                         {
-                            ProcessBuffer(bytesRead, buffer, mqttOption.Debug);
+                            ProcessBuffer(bytesRead, buffer);
                         }
                         catch (ArgumentOutOfRangeException ex)
                         {
-                            Debug.WriteLine($"AOR in ProcessBuffer: bytesRead={bytesRead}, buffer.Length={buffer.Length}");
-                            Debug.WriteLine(ex);
+                            debug?.Invoke($"AOR in ProcessBuffer: bytesRead={bytesRead}, buffer.Length={buffer.Length}");
+                            debug?.Invoke(ex.Message);
                             throw;
                         }
                     }
@@ -167,51 +167,72 @@ namespace Mqtt.Client.Network
         /// <summary>
         /// Dispatches the decoded packet to the appropriate event handler.
         /// </summary>
-        public void HandleSinglePacket(PacketType packetType, object packet, bool debug)
+        public void HandleSinglePacket(PacketType packetType, object packet)
         {
             try
             {
                 switch (packetType)
                 {
                     case PacketType.CONNACK:
-                        OnConnAck?.Invoke((ConnAckPacket)packet);
+                        var connAckPacket = (ConnAckPacket)packet;
+                        debug?.Invoke(" <- Received CONNACK packet");
+                        OnConnAck?.Invoke(connAckPacket);
                         break;
                     case PacketType.PUBLISH:
-                        OnPublish?.Invoke((PublishPacket)packet);
+                        var publishPacket = (PublishPacket)packet;
+                        debug?.Invoke(" <- Received PUBLISH packet (id: " + publishPacket.PacketID + ")");
+                        OnPublish?.Invoke(publishPacket);
                         break;
                     case PacketType.PUBACK:
-                        OnPubAck?.Invoke((PubAckPacket)packet);
+                        var pubBackPacket = (PubAckPacket)packet;
+                        debug?.Invoke(" <- Received PUBACK packet (id: " + pubBackPacket.PacketID + ")");
+                        OnPubAck?.Invoke(pubBackPacket);
                         break;
                     case PacketType.PUBREC:
-                        OnPubRec?.Invoke((PubRecPacket)packet);
+                        var pubRecPacket = (PubRecPacket)packet;
+                        debug?.Invoke(" <- Received PUBREC packet (id: " + pubRecPacket.PacketID + ")");
+                        OnPubRec?.Invoke(pubRecPacket);
                         break;
                     case PacketType.PUBREL:
-                        OnPubRel?.Invoke((PubRelPacket)packet);
+                        var pubRelPacket = (PubRelPacket)packet;
+                        debug?.Invoke(" <- Received PUBREL packet (id: " + pubRelPacket.PacketID + ")");
+                        OnPubRel?.Invoke(pubRelPacket);
                         break;
                     case PacketType.PUBCOMP:
-                        OnPubComp?.Invoke((PubCompPacket)packet);
+                        var pubCompPacket = (PubCompPacket)packet;
+                        debug?.Invoke(" <- Received PUBCOMP packet (id: " + pubCompPacket.PacketID + ")");
+                        OnPubComp?.Invoke(pubCompPacket);
                         break;
                     case PacketType.SUBACK:
-                        OnSubAck?.Invoke((SubAckPacket)packet);
+                        var subAckPacket = (SubAckPacket)packet;
+                        debug?.Invoke(" <- Received SUBACK packet (id: " + subAckPacket.PacketID + ")");
+                        OnSubAck?.Invoke(subAckPacket);
                         break;
                     case PacketType.UNSUBACK:
-                        OnUnSubAck?.Invoke((UnSubAckPacket)packet);
+                        var unsubAckPacket = (UnSubAckPacket)packet;
+                        debug?.Invoke(" <- Received UNSUBACK packet (id: " + unsubAckPacket.PacketID + ")");
+                        OnUnSubAck?.Invoke(unsubAckPacket);
                         break;
                     case PacketType.PINGREQ:
-                        OnPingReq?.Invoke((PingReqPacket)packet);
+                        var pingReqPacket = (PingReqPacket)packet;
+                        debug?.Invoke(" <- Received PINGREQ packet");
+                        OnPingReq?.Invoke(pingReqPacket);
                         break;
                     case PacketType.PINGRESP:
-                        OnPingResp?.Invoke((PingRespPacket)packet);
+                        var pingRespPacket = (PingRespPacket)packet;
+                        debug?.Invoke(" <- Received PINGRESP packet");
+                        OnPingResp?.Invoke(pingRespPacket);
                         break;
                     case PacketType.DISCONNECT:
-                        OnDisconnect?.Invoke((DisconnectPacket)packet);
+                        var disconnectPacket = (DisconnectPacket)packet;
+                        debug?.Invoke(" <- Received DISCONNECT packet");
+                        OnDisconnect?.Invoke(disconnectPacket);
                         break;
                 }
             }
             catch (Exception ex)
             {
-                if (debug)
-                    Debug.WriteLine($"Error handling packet: {ex.Message}");
+                debug?.Invoke($"Error handling packet: {ex.Message}");
             }
         }
 
@@ -220,6 +241,7 @@ namespace Mqtt.Client.Network
         /// </summary>
         public void Dispose()
         {
+            debug?.Invoke("Incoming handler terminated!");
             cts?.Cancel();
             cts = null;
             GC.SuppressFinalize(this);

@@ -9,11 +9,8 @@ using System.Net.Sockets;
 
 namespace Mqtt.Client
 {
-    public class MqttClient(MqttOption mqttOption) : IMqttClient
+    public class MqttClient(MqttOption mqttOption, Action<string>? debug = null) : IMqttClient
     {
-        public delegate void DebugDelegate(string message);
-        public event DebugDelegate? OnDebug;
-
         public delegate void ConnectionEstablishedDelegate(bool sessionPresent, ConnectReturnCode returnCode);
         public event ConnectionEstablishedDelegate? OnConnectionEstablished;
 
@@ -56,8 +53,8 @@ namespace Mqtt.Client
 
         private readonly MqttOption mqttOption = mqttOption;
 
-        private readonly MqttMonitor mqttMonitor = new();
-        private readonly PendingPacketQueue pendingPacketQueue = new();
+        private readonly MqttMonitor mqttMonitor = new(debug);
+        private readonly PendingPacketQueue pendingPacketQueue = new(debug);
         private OutgoingHandler? outgoingHandler;
         private IncomingHandler? incomingHandler;
 
@@ -103,7 +100,7 @@ namespace Mqtt.Client
             {
                 isConnecting = true;
 
-                OnDebug?.Invoke("Connecting...");
+                debug?.Invoke("Connecting...");
 
                 tcpClient = new TcpClient();
                 await tcpClient.ConnectAsync(host, port);
@@ -112,10 +109,10 @@ namespace Mqtt.Client
                 stream = tcpClient.GetStream();
                 // AUfbau des Streams über die verbindung
 
-                outgoingHandler = new OutgoingHandler(mqttOption, stream);
+                outgoingHandler = new OutgoingHandler(mqttOption, stream, debug);
                 // Initieren der ausgehenden handlers
 
-                incomingHandler = new IncomingHandler();
+                incomingHandler = new IncomingHandler(debug);
                 incomingHandler.OnConnAck += HandleConnAck;
                 incomingHandler.OnPublish += HandlePublish;
                 incomingHandler.OnPubAck += HandlePubAck;
@@ -125,7 +122,7 @@ namespace Mqtt.Client
                 incomingHandler.OnSubAck += HandleSubAck;
                 incomingHandler.OnUnSubAck += HandleUnsubAck;
                 incomingHandler.OnDisconnect += HandleDisconnect;
-                incomingHandler.Start(stream!, mqttMonitor, mqttOption);
+                incomingHandler.Start(stream);
                 // Initieren des eingehenden handlers 
 
                 mqttMonitor.Start(tcpClient, mqttOption.KeepAlive, outgoingHandler);
@@ -133,12 +130,13 @@ namespace Mqtt.Client
                 mqttMonitor.OnConnectionLost += ConnectionLost;
                 // Startet die Netzwerk kontroller um zu überprüfen, ob die verbindung besteht oder nicht
 
-                await outgoingHandler.SendConnect(clientID, username, password);
+                debug?.Invoke("The initialization of the MQTT client was successful.");
 
-                OnDebug?.Invoke("...sent connect packet");
+                await outgoingHandler.SendConnect(clientID, username, password);
             }
             catch (SocketException)
             {
+
                 OnConnectionFailed?.Invoke("A connection could not be established because the target computer refused the connection.");
                 await Terminate(true);
                 OnConnectResult?.Invoke(false);
@@ -375,35 +373,43 @@ namespace Mqtt.Client
         // Terminate the connection
         private async Task Terminate(bool isConnectionLost)
         {
-            if (!isConnectionLost)
-            {
-                OnDisconnected?.Invoke();
-            }
+            // Check if connection is already closed
+            if (mqttMonitor.IsConnectionClosed)
+                return;
 
+            // Check if connection is not lost
+            if (!isConnectionLost)
+                OnDisconnected?.Invoke();
+
+            // Dispose mqtt monitor and pending packet queue
             mqttMonitor.Dispose(!isConnectionLost);
             pendingPacketQueue.Dispose(isConnectionLost);
 
+            // Check if connection is lost
             if (isConnectionLost)
-    {
-        OnPacketRelease = null;
-    }
+                OnPacketRelease = null;
 
             // Close the stream
             if (stream != null)
             {
+                // Send DISCONNECT packet to broker
                 await outgoingHandler!.SendDisconnect();
+
+                debug?.Invoke("Stream has been closed!");
                 stream.Close();
                 stream.Dispose();
             }
 
+            // Dispose outgooing and incoming handler
             outgoingHandler?.Dispose();
             incomingHandler?.Dispose();
 
-            // Disconnect the client
+            // Close and dispose tcp connection
+            debug?.Invoke("TCP connection has been closed!");
             tcpClient?.Close();
             tcpClient?.Dispose();
 
-            OnDebug?.Invoke("Terminated! " +
+            debug?.Invoke("Terminated! " +
                 "{" + "\n" +
                 "    IsClientConnected: " + mqttMonitor.IsClientConnected + "\n" +
                 "    IsConnectionEstablished: " + mqttMonitor.IsConnectionEstablished + "\n" +
@@ -414,11 +420,9 @@ namespace Mqtt.Client
         // Handle the event when the connection is lost
         private async Task ConnectionLost()
         {
-            OnDebug?.Invoke("Connection lost...");
+            debug?.Invoke("Connection lost...");
             await Terminate(true);
-            Debug.WriteLine(" ====> Verbindung wurde unterbrochen! <====");
             OnConnectionLost?.Invoke();
-            OnDebug?.Invoke("Reconnecting...");
             await Reconnect();
         }
 
@@ -432,6 +436,8 @@ namespace Mqtt.Client
 
             do
             {
+                debug?.Invoke("Reconnecting...");
+
                 attempts++;
 
                 var tcs = new TaskCompletionSource<bool>();
@@ -450,12 +456,17 @@ namespace Mqtt.Client
                 
                 if (tcs.Task.Result)
                 {
-                    OnDebug?.Invoke("Reconnected!");
+                    debug?.Invoke("Reconnected!");
                     break;
+                }
+                else if (attempts >= maxAttempts)
+                {
+                    debug?.Invoke("Reconnect failed! (Reached max iterations)");
+                    await Terminate(false);
                 }
                 else
                 {
-                    OnDebug?.Invoke("Reconnect failed!");
+                    debug?.Invoke("Reconnect failed!");
                 }
 
             } while (attempts < maxAttempts);
@@ -476,17 +487,13 @@ namespace Mqtt.Client
             switch (pubPacket.QoS)
             {
                 case QualityOfService.AT_MOST_ONCE: // QoS 0 - "At most once"
-                    Debug.WriteLine(" <- Received Publish (AT_MOST_ONCE) - " + pubPacket.PacketID);
                     OnMessageReceived?.Invoke(pubPacket.Topic, pubPacket.Message, pubPacket.QoS, pubPacket.Retain);
                     break;
                 case QualityOfService.AT_LEAST_ONCE: // QoS 1 - "At least once"
-                    Debug.WriteLine(" <- Received Publish (AT_LEAST_ONCE) - " + pubPacket.PacketID);
                     OnMessageReceived?.Invoke(pubPacket.Topic, pubPacket.Message, pubPacket.QoS, pubPacket.Retain);
-                    Debug.WriteLine(" -> Send PUBACK! - " + pubPacket.PacketID);
                     await outgoingHandler!.SendPubAck(pubPacket.PacketID);
                     break;
                 case QualityOfService.EXACTLY_ONCE: // QoS 2 - "Exactly once"
-                    Debug.WriteLine(" <- Received Publish (EXACTLY_ONCE) - " + pubPacket.PacketID);
                     pendingPacketQueue.Enqueue(
                         new PendingPacket(
                             pubPacket.PacketID,
@@ -503,7 +510,6 @@ namespace Mqtt.Client
         // Handle the PUBACK packet received from the broker
         private void HandlePubAck(PubAckPacket pubAckPacket)
         {
-            Debug.WriteLine(" <- Received PUBBACK! - " + pubAckPacket.PacketID);
             pendingPacketQueue.Dequeue(PendingPacketType.CLIENT, pubAckPacket.PacketID);
             OnPacketRelease?.Invoke(pubAckPacket.PacketID);
         }
@@ -511,14 +517,12 @@ namespace Mqtt.Client
         // Handle the PUBREC packet received from the broker
         private void HandlePubRec(PubRecPacket pubRecPacket)
         {
-            Debug.WriteLine(" <- Received PUBREC! - " + pubRecPacket.PacketID);
             pendingPacketQueue.UpdatePacketTypeStatus(PendingPacketType.CLIENT, pubRecPacket.PacketID, PacketType.PUBREL);
         }
 
         // Handle the PUBREL packet received from the broker
         private void HandlePubRel(PubRelPacket pubRelPacket)
         {
-            Debug.WriteLine(" <- Received PUBREL! - " + pubRelPacket.PacketID);
             PublishPacket publishPacket = (PublishPacket)pendingPacketQueue.UpdatePacketTypeStatus(PendingPacketType.SERVER, pubRelPacket.PacketID, PacketType.PUBCOMP)!;
             OnMessageReceived?.Invoke(publishPacket.Topic, publishPacket.Message, publishPacket.QoS, publishPacket.Retain);
         }
@@ -526,7 +530,6 @@ namespace Mqtt.Client
         // Handle the PUBCOMP packet received from the broker
         private void HandlePubComp(PubCompPacket pubCompPacket)
         {
-            Debug.WriteLine(" <- Received PUBCOMP! - " + pubCompPacket.PacketID);
             pendingPacketQueue.Dequeue(PendingPacketType.CLIENT, pubCompPacket.PacketID);
             OnPacketRelease?.Invoke(pubCompPacket.PacketID);
         }
@@ -534,7 +537,6 @@ namespace Mqtt.Client
         // Handle the SUBACK packet received from the broker
         private void HandleSubAck(SubAckPacket subAckPacket)
         {
-            Debug.WriteLine(" <- Received SUBSCRIBE! - " + subAckPacket.PacketID);
             SubscribePacket subscribePacket = (SubscribePacket)pendingPacketQueue.Dequeue(PendingPacketType.CLIENT, subAckPacket.PacketID)!;
             foreach (Topic topic in subscribePacket.Topics)
             {
@@ -546,7 +548,6 @@ namespace Mqtt.Client
         // Check for any error during the execution of a function
         private void HandleUnsubAck(UnSubAckPacket unsubAckPacket)
         {
-            Debug.WriteLine(" <- Received UNSUBSCRIBE! - " + unsubAckPacket.PacketID);
             UnsubscribePacket unsubscribePacket = (UnsubscribePacket)pendingPacketQueue.Dequeue(PendingPacketType.CLIENT, unsubAckPacket.PacketID)!;
             foreach (Topic topic in unsubscribePacket.Topics)
             {
