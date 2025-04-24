@@ -10,7 +10,7 @@ namespace Mqtt.Client.Network
         ConnectionError
     }
 
-    public class MqttMonitor : IDisposable
+    public class MqttMonitor
     {
         public delegate Task ConnectionLostHandler();
         public event ConnectionLostHandler? OnConnectionLost;
@@ -28,12 +28,13 @@ namespace Mqtt.Client.Network
 
         public void Start(TcpClient tcpClient, int keepAlive, OutgoingHandler outgoingHandler)
         {
-            if (!IsConnectionClosed)
+            if (cts != null)
             {
                 Debug.WriteLine("Mqtt monitor is already runnning!");
                 return;
             }
 
+            cts = new CancellationTokenSource();
             isConnectionClosed = false;
             isConnectionEstablished = true;
             Debug.WriteLine("Mqtt monitor is runnning now!");
@@ -64,15 +65,13 @@ namespace Mqtt.Client.Network
                     }
                     await Task.Delay(10);
                 }
-
-                Debug.WriteLine("MqttMonitor stopped");
             }, token);
 
             Task.Run(async () =>
             {
                 while (!IsConnectionClosed)
                 {
-                    await Task.Delay(keepAlive * 1000 / 2);
+                    await Task.Delay(keepAlive * 1000 / 2, token);
                     Debug.WriteLine("Send Ping Request");
                     await outgoingHandler.SendPingReq();
                 }
@@ -115,22 +114,24 @@ namespace Mqtt.Client.Network
             }
         }
 
-        public void Dispose()
+        public void Dispose(bool closeConnection)
         {
             if (cts != null)
             {
+                Debug.WriteLine("stopping mqtt monitor!");
                 cts.Cancel();
                 cts = null;
             }
-            
-            isConnectionClosed = true;
+
+            if (closeConnection)
+            {
+                isConnectionClosed = true;
+            }
             isConnectionEstablished = false;
             IsClientConnected = false;
 
             OnConnectionLost = null;
             OnDisconnect = null;
-
-            GC.SuppressFinalize(this);
         }
     }
 }

@@ -79,7 +79,7 @@ namespace Mqtt.Client.Queue
                                     case PacketType.PUBLISH:
                                         {
                                             PublishPacket publishPacket = (PublishPacket)packet.Bin!;
-                                            Debug.WriteLine(" -> Send PUBLISH! - " + packet.ID);
+                                            Debug.WriteLine(" -> Send PUBLISH! - " + packet.ID + " (" + publishPacket.QoS + ")");
                                             if (publishPacket.QoS == QualityOfService.AT_MOST_ONCE)
                                             {
                                                 await outgoingHandler!.SendPublish(id, publishPacket.Topic, publishPacket.Message, publishPacket.QoS);

@@ -11,6 +11,9 @@ namespace Mqtt.Client.Network
         public async Task SendConnect(string clientId, string username, string password)
         {
             // Connect Packet
+            Debug.WriteLine("\n\n==========================================================================");
+            Debug.WriteLine("option.CleanSession: " + option.CleanSession);
+            Debug.WriteLine("==========================================================================\n\n");
             ConnectPacket connectPacket = new ConnectPacket(clientId, username, password, option.LastWill, option.WillRetain, option.QoS, option.CleanSession, option.Version, (ushort)option.KeepAlive, (uint)option.SessionExpiryInterval);
 
             // Send the message and flush the stream
