@@ -2,7 +2,7 @@
 using System.Net;
 using System.Text;
 
-namespace mqtt_wpf.Client.Validation
+namespace Mqtt.Client.Validation
 {
     public class MQTTValidator
     {

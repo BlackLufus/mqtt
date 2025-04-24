@@ -3,7 +3,7 @@ using Mqtt.Client.Packets;
 using Mqtt.Client.Queue;
 using Mqtt.Client.ReasonCode;
 using Mqtt.Packets;
-using mqtt_wpf.Client.Validation;
+using Mqtt.Client.Validation;
 using System.Diagnostics;
 using System.Net.Sockets;
 
@@ -479,7 +479,7 @@ namespace Mqtt.Client
         private void HandlePubRel(PubRelPacket pubRelPacket)
         {
             Debug.WriteLine(" <- Received PUBREL! - " + pubRelPacket.PacketID);
-            PublishPacket publishPacket = (PublishPacket)pendingPacketQueue.Dequeue(PendingPacketType.SERVER, pubRelPacket.PacketID)!;
+            PublishPacket publishPacket = (PublishPacket)pendingPacketQueue.UpdatePacketTypeStatus(PendingPacketType.SERVER, pubRelPacket.PacketID, PacketType.PUBCOMP)!;
             OnMessageReceived?.Invoke(publishPacket.Topic, publishPacket.Message, publishPacket.QoS, publishPacket.Retain);
         }
 

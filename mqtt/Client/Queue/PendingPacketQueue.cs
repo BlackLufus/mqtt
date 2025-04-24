@@ -105,6 +105,11 @@ namespace Mqtt.Client.Queue
                                         Debug.WriteLine(" -> Send PUBREL! - " + packet.ID);
                                         await outgoingHandler!.SendPubRel(id);
                                         break;
+                                    case PacketType.PUBCOMP:
+                                        Debug.WriteLine(" -> Send PUBCOMP! - " + packet.ID);
+                                        await outgoingHandler!.SendPubComp(id);
+                                        Dequeue(type, id);
+                                        break;
                                     case PacketType.SUBSCRIBE:
                                         SubscribePacket subscribePacket = (SubscribePacket)packet.Bin!;
                                         Debug.WriteLine(" -> Send SUBSCRIBE! - " + packet.ID);
