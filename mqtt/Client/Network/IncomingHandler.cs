@@ -11,6 +11,7 @@ namespace Mqtt.Client.Network
 {
     public class IncomingHandler : IDisposable
     {
+        // Events raised when specific MQTT packets are received
         public event Action<ConnAckPacket>? OnConnAck;
         public event Func<PublishPacket, Task>? OnPublish;
         public event Action<PubAckPacket>? OnPubAck;
@@ -25,9 +26,14 @@ namespace Mqtt.Client.Network
 
         private CancellationTokenSource? cts;
 
+        // Accumulates incoming bytes until a full MQTT packet can be parsed
         private byte[] _accumulatedBuffer = Array.Empty<byte>();
         private readonly object _bufferLock = new object();
 
+        /// <summary>
+        /// Calculates the full packet length using the MQTT Remaining Length encoding.
+        /// Returns -1 if the header or length field is incomplete.
+        /// </summary>
         private int CalculatePacketLength(byte[] buffer, out PacketType packetType)
         {
             packetType = (PacketType)(buffer[0] & 0b_1111_0000);
@@ -36,6 +42,8 @@ namespace Mqtt.Client.Network
             int offset = 1;
             int multiplier = 1;
             int remainingLength = 0;
+
+            // Decode variable-length Remaining Length field
             byte currentByte;
 
             do
@@ -47,33 +55,38 @@ namespace Mqtt.Client.Network
                 offset++;
             } while ((currentByte & 0x80) != 0);
 
-            return offset + remainingLength; // Gesamtlänge
+            // Total size = header bytes + payload bytes
+            return offset + remainingLength;
         }
 
+        /// <summary>
+        /// Appends new bytes and processes as many complete MQTT packets as possible.
+        /// </summary>
         private void ProcessBuffer(int bytesRead, byte[] buffer, bool debug)
         {
+            // Ensure that only one thread at a time modifies the accumulated buffer
             lock (_bufferLock)
             {
+                // Append new data to the accumulated buffer
                 // Effizienteres Hinzufügen mit Array.Resize
                 int originalLength = _accumulatedBuffer.Length;
                 Array.Resize(ref _accumulatedBuffer, originalLength + bytesRead);
                 Buffer.BlockCopy(buffer, 0, _accumulatedBuffer, originalLength, bytesRead);
 
+                // Extract and handle all full packets
                 while (true)
                 {
                     if (_accumulatedBuffer.Length < 2) break;
 
-                    // 1. NUR Länge berechnen
+                    // Determine the expected length of the next packet
                     int packetLength = CalculatePacketLength(_accumulatedBuffer, out PacketType packetType);
-
-                    // Unvollständiges Paket?
                     if (packetLength == -1 || _accumulatedBuffer.Length < packetLength) break;
 
-                    // 2. Paket isolieren
+                    // Isolate the full packet bytes
                     byte[] packetBytes = new byte[packetLength];
                     Buffer.BlockCopy(_accumulatedBuffer, 0, packetBytes, 0, packetLength);
 
-                    // 3. Jetzt erst dekodieren
+                    // Decode and dispatch the packet
                     try
                     {
                         object packet = DecodeFullPacket(packetBytes, packetType);
@@ -82,16 +95,18 @@ namespace Mqtt.Client.Network
                     catch (Exception ex)
                     {
                         Debug.WriteLine($"Invalid packet: {ex.Message}");
-                        // ENTFERNE das gesamte fehlerhafte Paket
-                        packetLength = _accumulatedBuffer.Length; // Worst Case: Alles verwerfen
+                        packetLength = _accumulatedBuffer.Length;
                     }
 
-                    // 4. Buffer kürzen
+                    // Remove the processed packet bytes from the buffer
                     _accumulatedBuffer = _accumulatedBuffer.Skip(packetLength).ToArray();
                 }
             }
         }
 
+        /// <summary>
+        /// Decodes a complete packet byte array into the appropriate MQTT packet object.
+        /// </summary>
         private object DecodeFullPacket(byte[] packetBytes, PacketType packetType)
         {
             return packetType switch
@@ -111,20 +126,22 @@ namespace Mqtt.Client.Network
             };
         }
 
+        /// <summary>
+        /// Starts an asynchronous loop reading from the network stream.
+        /// Incoming data is buffered and processed.
+        /// </summary>
         public void Start(NetworkStream stream, MqttMonitor mqttMonitor, MqttOption mqttOption)
         {
             if (cts != null)
             {
-                Debug.WriteLine("Incoming Packet Listener is already running!");
                 return;
             }
             cts = new CancellationTokenSource();
-            Debug.WriteLine("Incoming Packet Listener started");
 
             CancellationToken token = cts.Token;
             Task.Run(async () =>
             {
-                byte[] buffer = new byte[4096]; // Sinnvolle Puffergröße (z. B. 4 KB)
+                byte[] buffer = new byte[4096];
                 int bytesRead;
 
                 do
@@ -148,15 +165,12 @@ namespace Mqtt.Client.Network
         }
 
         /// <summary>
-        /// Handle incoming packet
+        /// Dispatches the decoded packet to the appropriate event handler.
         /// </summary>
-        /// <param name="packet"></param>
         public void HandleSinglePacket(PacketType packetType, object packet, bool debug)
         {
             try
             {
-
-                // Handle the packet based on the packet type
                 switch (packetType)
                 {
                     case PacketType.CONNACK:
@@ -196,18 +210,18 @@ namespace Mqtt.Client.Network
             }
             catch (Exception ex)
             {
-                Console.WriteLine("Error while handling incoming packet: " + ex.Message);
-                Console.WriteLine("Stack Trace: " + ex.StackTrace);
+                if (debug)
+                    Debug.WriteLine($"Error handling packet: {ex.Message}");
             }
         }
 
+        /// <summary>
+        /// Cancels the read loop and releases resources.
+        /// </summary>
         public void Dispose()
         {
-            if (cts != null)
-            {
-                cts.Cancel();
-                cts = null;
-            }
+            cts?.Cancel();
+            cts = null;
             GC.SuppressFinalize(this);
         }
     }
