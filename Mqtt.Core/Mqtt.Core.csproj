@@ -3,5 +3,11 @@
     <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+	<PackageProjectUrl>https://github.com/BlackLufus/mqtt</PackageProjectUrl>
+	<Title>MqttCore</Title>
+	<Copyright>2026</Copyright>
+	<Description>Mqtt Core Elements</Description>
+	<RepositoryUrl>https://github.com/BlackLufus/mqtt</RepositoryUrl>
+	<PackageLicenseExpression>MIT</PackageLicenseExpression>
   </PropertyGroup>
 </Project>
