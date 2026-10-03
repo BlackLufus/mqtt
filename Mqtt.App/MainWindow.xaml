@@ -1,0 +1,140 @@
+﻿<Window
+  x:Class="Mqtt.App.MainWindow"
+  xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+  xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+  xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+  xmlns:local="clr-namespace:Mqtt.App"
+  mc:Ignorable="d"
+  Title="MainWindow"
+  Height="550"
+  Width="900"
+  MinHeight="550"
+  MinWidth="900"
+>
+  <Grid>
+    <Viewbox>
+      <Grid>
+        <Grid.RowDefinitions>
+          <RowDefinition Height="25" />
+          <RowDefinition Height="*" />
+          <RowDefinition Height="25" />
+        </Grid.RowDefinitions>
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="25" />
+          <ColumnDefinition Width="*" />
+          <ColumnDefinition Width="25" />
+        </Grid.ColumnDefinitions>
+        <Border Grid.Row="1" Grid.Column="1">
+          <Border.Style>
+            <Style TargetType="Border">
+              <Setter Property="BorderBrush" Value="#F666" />
+              <Setter Property="BorderThickness" Value="2" />
+            </Style>
+          </Border.Style>
+          <Grid Width="900" Height="550">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="2*" />
+              <ColumnDefinition Width="4*" />
+            </Grid.ColumnDefinitions>
+            <Border Grid.Column="0">
+              <Border.Style>
+                <Style TargetType="Border">
+                  <Setter Property="BorderBrush" Value="#F666" />
+                  <Setter Property="BorderThickness" Value="0 0 2 0" />
+                </Style>
+              </Border.Style>
+              <StackPanel VerticalAlignment="Top">
+                <Label Content="Verbinden" FontSize="24" Margin="0 12 0 2" />
+                <TextBox
+                  x:Name="IpAdress"
+                  Text="test.mosquitto.org"
+                  FontSize="24"
+                  Padding="0 5 0 5"
+                />
+                <Button Grid.Row="0" Content="Connect" FontSize="24" Click="Connect_Click" />
+                <Border BorderBrush="#F666" BorderThickness="1" />
+                <!--<Button Content="Publish" FontSize="24" Click="Publish_Click"/>-->
+                <Label Content="Topic abonnieren" FontSize="24" Margin="0 12 0 2" />
+                <TextBox x:Name="SubScribeTopic" Text="uutestuu" FontSize="24" Padding="0 5 0 5" />
+                <ComboBox x:Name="QoS" FontSize="24" SelectedIndex="0">
+                  <ComboBoxItem Content="AT_MOST_ONCE" />
+                  <ComboBoxItem Content="AT_LEAST_ONCE" />
+                  <ComboBoxItem Content="EXACTLY_ONCE" />
+                </ComboBox>
+                <Button Content="SubScribe" FontSize="24" Click="Subscribe_Click" />
+                <Border BorderBrush="#F666" BorderThickness="1" />
+                <Label Content="Topic abbestellen" FontSize="24" Margin="0 12 0 2" />
+                <TextBox
+                  x:Name="UnSubScribeTopic"
+                  Text="uutestuu"
+                  FontSize="24"
+                  Padding="0 5 0 5"
+                />
+                <Button Content="UnsubScribe" FontSize="24" Click="Unsubscribe_Click" />
+                <Border BorderBrush="#F666" BorderThickness="1" />
+                <Label Content="Verbindung trennen" FontSize="24" Margin="0 12 0 2" />
+                <Button Content="Disconnect" FontSize="24" Click="Disconnect_Click" />
+                <Border BorderBrush="#F666" BorderThickness="1" />
+              </StackPanel>
+            </Border>
+            <Grid Grid.Column="1">
+              <Grid.RowDefinitions>
+                <RowDefinition Height="*" />
+                <RowDefinition Height="40" />
+              </Grid.RowDefinitions>
+              <ScrollViewer Grid.Row="0" x:Name="MessageContainer">
+                <StackPanel x:Name="Messages" />
+              </ScrollViewer>
+              <Grid Grid.Row="1">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="4*" />
+                  <ColumnDefinition Width="1*" />
+                  <ColumnDefinition Width="6*" />
+                </Grid.ColumnDefinitions>
+                <TextBox x:Name="TopicTemplate">
+                  <TextBox.Style>
+                    <Style TargetType="TextBox">
+                      <Setter Property="Template">
+                        <Setter.Value>
+                          <ControlTemplate TargetType="TextBox">
+                            <Border BorderThickness="0 2 2 0" BorderBrush="#F666">
+                              <TextBox x:Name="Topic" Text="uutestuu">
+                                <TextBox.Style>
+                                  <Style TargetType="TextBox">
+                                    <Setter Property="BorderThickness" Value="0" />
+                                    <Setter Property="FontSize" Value="14" />
+                                    <Setter Property="VerticalAlignment" Value="Center" />
+                                    <Setter Property="HorizontalAlignment" Value="Right" />
+                                    <Setter Property="Padding" Value="0 0 5 0" />
+                                  </Style>
+                                </TextBox.Style>
+                              </TextBox>
+                            </Border>
+                          </ControlTemplate>
+                        </Setter.Value>
+                      </Setter>
+                    </Style>
+                  </TextBox.Style>
+                </TextBox>
+                <ComboBox x:Name="MessageQoS" Grid.Column="1" FontSize="24">
+                  <ComboBoxItem Content="0" IsSelected="True" />
+                  <ComboBoxItem Content="1" />
+                  <ComboBoxItem Content="2" />
+                </ComboBox>
+                <local:SendMessageInput
+                  x:Name="Message"
+                  Grid.Column="2"
+                  Height="40"
+                  Width="Auto"
+                  FontSize="14"
+                  Click="Publish_Click"
+                />
+              </Grid>
+            </Grid>
+          </Grid>
+        </Border>
+      </Grid>
+    </Viewbox>
+  </Grid>
+</Window>

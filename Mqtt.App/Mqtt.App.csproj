@@ -1,0 +1,24 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Remove="images\delete.png" />
+    <None Remove="images\send.png" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Mqtt.Client\Mqtt.Client.csproj" />
+    <ProjectReference Include="..\Mqtt.Core\Mqtt.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Resource Include="images\delete.png" />
+    <Resource Include="images\send.png" />
+  </ItemGroup>
+</Project>

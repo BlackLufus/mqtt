@@ -1,0 +1,38 @@
+﻿namespace Mqtt.Core.Packets
+{
+    public class PubCompPacket(ushort packetID)
+    {
+        public ushort PacketID { get; } = packetID;
+
+        public byte[] Encode()
+        {
+            // Fixed Header
+            byte fixedHeader = (byte)PacketType.PUBCOMP;
+
+            // Remaining Length
+            int remainingLength = 2;
+
+            // Variable Header
+            byte[] packetIDBytes = new byte[] { (byte)(PacketID >> 8), (byte)(PacketID & 0xFF) };
+
+            // Encode
+            byte[] data = [fixedHeader, (byte)remainingLength, packetIDBytes[0], packetIDBytes[1]];
+
+            return data;
+        }
+
+        public static PubCompPacket Decode(byte[] data)
+        {
+            // Fixed Header
+            byte fixedHeader = data[0];
+
+            // Remaining Length
+            int remainingLength = data[1];
+
+            // Variable Header
+            ushort packetID = (ushort)(data[2] << 8 | data[3]);
+
+            return new PubCompPacket(packetID);
+        }
+    }
+}
